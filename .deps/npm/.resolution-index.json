@@ -13,8 +13,16 @@
   "contracts/FavoriteNumber.sol": {
     "__sources__": {
       "contracts/FavoriteNumber.sol": {
-        "content": "// SPDX-License-Identifier: MIT\npragma solidity >=0.8.18;\n\ncontract FavoriteNumber{\n    /**\n        实现的功能：\n        将名字和他喜欢的数字一一对应起来\n    */\n    mapping (string => uint256) private nameToFavoriteNumber;\n\n    // 定义public，让这个方法可以在外部调用\n    // 这里定义memory是因为string是一个动态大小的类型，所以使用memory指定这个参数在函数执行过程中放在内存里面\n    // uint256是一个简单的值类型，大小是固定的\n    function createOrUpdateNumber(string memory name, uint256 number) public {\n        nameToFavoriteNumber[name] = number;\n    }\n    // 加上view这个关键字，表示这个函数只是读取数据，不会做任何修改\n    // 如果是pure，那么这个函数既不能修改也不能读取，但是这个函数读取了mapping的数据结构\n    function getNumber(string memory name) public view returns (uint256) {\n        return nameToFavoriteNumber[name];\n    }\n}\n",
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.18;\n\ncontract FavoriteNumber{\n    /**\n        实现的功能：\n        将名字和他喜欢的数字一一对应起来\n    */\n    mapping (string => uint256) private nameToFavoriteNumber;\n\n    // 定义public，让这个方法可以在外部调用\n    // 这里定义memory是因为string是一个动态大小的类型，所以使用memory指定这个参数在函数执行过程中放在内存里面\n    // uint256是一个简单的值类型，大小是固定的\n    function createOrUpdateNumber(string memory name, uint256 number) public {\n        nameToFavoriteNumber[name] = number;\n    }\n    // 加上view这个关键字，表示这个函数只是读取数据，不会做任何修改\n    // 如果是pure，那么这个函数既不能修改也不能读取，但是这个函数读取了mapping的数据结构\n    function getNumber(string memory name) public view returns (uint256) {\n        return nameToFavoriteNumber[name];\n    }\n}\n",
         "file": "contracts/FavoriteNumber.sol"
+      }
+    }
+  },
+  "contracts/ProfileStatus.sol": {
+    "__sources__": {
+      "contracts/ProfileStatus.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.18;\n\ncontract ProfileStatus{\n    // 在favoriteNumber中，mapping是将名字作为一个查询的key\n    // 如果名字重名了，那么mapping就造成冲突了\n    // 这里解决这个问题就是使用地址来解决\n    // 定义一个结构体\n    struct Status{\n        string name; // \n        string message;\n    }\n    // 创建一个mapping将地址和结构体关联起来\n    mapping(address => Status) private userStatus;\n\n    function createOrUpdate(string memory _name, string memory _message) public {\n        // 这里调用的时候不知道地址是什么？\n        // 这里通过内置方法获取\n        // 在合约调用这个方法的时候，会传入地址from、to等\n        userStatus[msg.sender].name = _name;\n        userStatus[msg.sender].message = _message;\n    }\n    function getStatus() public view returns (string memory, string memory) {\n        return (userStatus[msg.sender].name, userStatus[msg.sender].message);\n    }\n}\n",
+        "file": "contracts/ProfileStatus.sol"
       }
     }
   }
