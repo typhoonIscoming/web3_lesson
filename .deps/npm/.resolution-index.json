@@ -1,0 +1,21 @@
+{
+  "contracts/FavorateNumber.sol": {
+    "__sources__": {}
+  },
+  "contracts/1_Storage.sol": {
+    "__sources__": {
+      "contracts/1_Storage.sol": {
+        "content": "// SPDX-License-Identifier: GPL-3.0\n// solidity 文件第一行必须声明文件协议\n// 第二行定义使用solidity的版本：大于等于0.8.2，小于0.9.0\npragma solidity >=0.8.2 <0.9.0;\n\n/**\n * @title Storage\n * @dev Store & retrieve value in a variable\n * @custom:dev-run-script ./scripts/deploy_with_ethers.ts\n */\n // contract 定义一个合约，合约名字就是Strorage\ncontract Storage {\n    // 无符号的整数类型\n    uint256 number;\n\n    /**\n     * @dev Store value in variable\n     * @param num value to store\n     */\n    function store(uint256 num) public {\n        number = num;\n    }\n\n    /**\n     * @dev Return value \n     * @return value of 'number'\n     */\n    function retrieve() public view returns (uint256){\n        return number;\n    }\n}",
+        "file": "contracts/1_Storage.sol"
+      }
+    }
+  },
+  "contracts/FavoriteNumber.sol": {
+    "__sources__": {
+      "contracts/FavoriteNumber.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity >=0.8.18;\n\ncontract FavoriteNumber{\n    /**\n        实现的功能：\n        将名字和他喜欢的数字一一对应起来\n    */\n    mapping (string => uint256) private nameToFavoriteNumber;\n\n    // 定义public，让这个方法可以在外部调用\n    // 这里定义memory是因为string是一个动态大小的类型，所以使用memory指定这个参数在函数执行过程中放在内存里面\n    // uint256是一个简单的值类型，大小是固定的\n    function createOrUpdateNumber(string memory name, uint256 number) public {\n        nameToFavoriteNumber[name] = number;\n    }\n    // 加上view这个关键字，表示这个函数只是读取数据，不会做任何修改\n    // 如果是pure，那么这个函数既不能修改也不能读取，但是这个函数读取了mapping的数据结构\n    function getNumber(string memory name) public view returns (uint256) {\n        return nameToFavoriteNumber[name];\n    }\n}\n",
+        "file": "contracts/FavoriteNumber.sol"
+      }
+    }
+  }
+}
