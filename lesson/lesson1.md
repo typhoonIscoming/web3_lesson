@@ -112,3 +112,42 @@ Remix自动提供多个测试账户
 - payable函数
 - 可以接收ETH
 - 需要在Value字段输入金额
+
+
+调用view函数（蓝色）：
+操作步骤：
+1. 找到message按钮（public变量自动生成）
+2. 点击按钮
+3. 立即在按钮下方显示结果
+4. 不消耗gas
+5. 不创建交易记录
+
+调用修改函数（橙色）：
+操作步骤：
+1. 找到updateMessage函数
+2. 在输入框输入新消息："I love Solidity"
+3. 注意：字符串要加引号
+4. 点击按钮
+5. 等待交易确认
+6. 在控制台查看交易详情
+   - 交易哈希（Transaction Hash）
+   - Gas使用量
+   - 执行状态
+
+6.3 理解交易详情
+点击控制台中的交易记录，可以看到详细信息：
+```js
+Transaction Details：
+├─ transaction hash: 0x123...（交易唯一标识）
+├─ from: 0xABC...（调用者地址）
+├─ to: 0xDEF...（合约地址）
+├─ gas: 43494（使用的gas）
+├─ transaction cost: 43494 gas
+├─ execution cost: 22230 gas
+├─ input: 0x...（函数调用数据）
+└─ decoded input: updateMessage("I love Solidity")
+```
+
+
+
+
