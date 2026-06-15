@@ -69,16 +69,14 @@ contract TokenContract {
 - 数据代表了合约的"状态"
 
 **步骤2：是否为外部函数参数？ **
+
 如果数据不需要永久保存，接下来判断数据来源。
 
 **外部函数参数的定义：**
 ```js
 // ✓ 这是外部函数参数
-function transfer(
-    address to,
-    uint256 amount,
-    bytes calldata data  // 外部传入的参数
-) external {
+// 外部传入的参数
+function transfer(address to, uint256 amount, bytes calldata data) external {
     // ...
 }
 
@@ -102,6 +100,84 @@ function processArray(uint256[] memory data ) external pure returns (uint256[] m
     return data;
 }
 ```
+**不需要修改 → 使用Calldata（推荐）：**
+```js
+// 只读，用calldata省Gas
+function calculateSum(uint256[] calldata data) external pure returns (uint256) {
+    uint256 sum = 0;
+    for (uint i = 0; i < data.length; i++) {
+        sum += data[i];  // 只读取，不修改
+    }
+    return sum;
+}
+```
+**1.5 常见场景示例**
+
+**场景A：用户余额管理**
+
+```js
+contract Wallet {
+    // Storage - 需要永久保存
+    mapping(address => uint256) public balances;
+    
+    function deposit() external payable {
+        // 修改storage状态
+        balances[msg.sender] += msg.value;
+    }
+    
+    function withdraw(uint256 amount) external {
+        // 读取和修改storage
+        require(balances[msg.sender] >= amount);
+        balances[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
+}
+```
+**B场景：大规模数据处理**
+```js
+contract DataProcessor {
+    uint256[] public results;  // Storage - 永久保存结果
+    // Calldata - 外部参数且只读
+    function batchProcess(uint256[] calldata inputs) external {
+        // Memory - 临时存储中间结果
+        uint256[] memory temp = new uint256[](inputs.length);
+        
+        for (uint i = 0; i < inputs.length; i++) {
+            temp[i] = inputs[i] * 2;  // 从calldata读取，写入memory
+        }
+        // 最后写入storage
+        for (uint i = 0; i < temp.length; i++) {
+            results.push(temp[i]);  // 从memory读取，写入storage
+        }
+    }
+}
+```
+**场景C：字符串拼接**
+```js
+contract StringManager {
+    string public storedText;  // Storage - 永久保存
+    
+    // Memory - 需要修改字符串
+    function concatenate(
+        string memory prefix,
+        string memory suffix
+    ) external pure returns (string memory) {
+        // 字符串操作需要memory（可修改）
+        return string(abi.encodePacked(prefix, suffix));
+    }
+    
+    // Calldata - 只读参数，更省Gas
+    function getLength(
+        string calldata text
+    ) external pure returns (uint256) {
+        return bytes(text).length;  // 只读操作
+    }
+}
+```
+
+
+
+
 
 
 
