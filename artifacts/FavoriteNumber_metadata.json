@@ -1,6 +1,6 @@
 {
 	"compiler": {
-		"version": "0.8.35+commit.47b9dedd"
+		"version": "0.8.18+commit.87f61d96"
 	},
 	"language": "Solidity",
 	"output": {
@@ -58,7 +58,7 @@
 		"compilationTarget": {
 			"contracts/FavoriteNumber.sol": "FavoriteNumber"
 		},
-		"evmVersion": "osaka",
+		"evmVersion": "paris",
 		"libraries": {},
 		"metadata": {
 			"bytecodeHash": "ipfs"
@@ -71,11 +71,11 @@
 	},
 	"sources": {
 		"contracts/FavoriteNumber.sol": {
-			"keccak256": "0xa2a7fb23e44368780153c75748363e5726f577245e2d73c6f96ecfa2de663560",
+			"keccak256": "0x5b57a04d010b97928c9b641d59eacbb87ce1d28353b9be8d896e45c587fabf23",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://8262656c072642663db88bfcad8c498b4fcbc6122b21b8ad124394caa11eff90",
-				"dweb:/ipfs/QmSnbDo6vXUMgi9SQGqtLRcm57eMybXAR9bmBbtQtYLzcA"
+				"bzz-raw://9a60afbf7b3aae10f71c8df2e4770e93531ec3407a0cc2ce83eac10da5dfcf28",
+				"dweb:/ipfs/QmXGhztzNwuqBzS1i7BvAxtAxSPx3K8N9FDWjDpQfSabZc"
 			]
 		}
 	},
