@@ -77,11 +77,57 @@ contract OptimizedContract {
 |SSTORE (推送操作)|10次|约20,000个气体|20万气体|
 |总共|-|-|约202,100个气体|
 
+节省成本：
 
+- 绝对值：224,000 - 202,100 = 21,900 气体
+- 比例：21,900 / 224,000 = 9.8%
 
+## 2.3 优化技巧深度解析
 
+### 技巧1：Calldata vs Memory
 
+**原理说明：**
 
+当您使用memory参数时，EVM 会进行以下操作：
+
+1. 从交易输入（calldata区域）读取数据
+2. 复制到内存（内存区域）
+3. 函数访问内存区域的数据
+
+**当你使用calldata参数时：**
+
+1. 直接从交易输入读取数据
+2. 消耗复制，节省燃气
+
+**对比示例：**
+```sol
+// Memory方式：需要复制
+function processMemory(
+    uint256[] memory data  // 数据流：calldata → memory → 使用
+) external pure returns (uint256) {
+    // 成本：复制成本 + 访问成本
+    return data.length;
+}
+
+// Calldata方式：直接读取
+function processCalldata(
+    uint256[] calldata data  // 数据流：calldata → 直接使用
+) external pure returns (uint256) {
+    // 成本：仅访问成本
+    return data.length;
+}
+```
+**什么时候必须用内存？**
+```sol
+function needsMemory(
+    string memory text
+) external pure returns (string memory) {
+    // 必须用memory的情况：需要修改参数
+    bytes memory b = bytes(text);
+    b[0] = 'X';  // 修改操作
+    return string(b);
+}
+```
 
 
 
