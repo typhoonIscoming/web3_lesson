@@ -10,7 +10,7 @@
 - 1.1 为什么选择正确的存储位置很重要？
 ---
 
->> 在Solidity开发中，选择错误的存储位置会导致：
+> 在Solidity开发中，选择错误的存储位置会导致：
 
 成本问题：
 
@@ -36,6 +36,90 @@
 | 典型用途 | 状态变量 | 临时数据 | 外部参数 |
 | SLOAD成本 | 2100+ 气体 | - | - |
 | SSTORE成本 | 20,000 气体（首次） | - | - |
+
+# 1.3 存储位置选择决策树
+
+# 1.4 决策流程详解
+
+步骤1：数据需要永久保存吗？
+
+这是最关键的第一步判断
+
+选择Storage的场景：
+
+```js
+contract TokenContract {
+    // ✓ 用户余额 - 必须永久保存
+    mapping(address => uint256) public balances;
+    
+    // ✓ 合约所有者 - 必须永久保存
+    address public owner;
+    
+    // ✓ 总供应量 - 必须永久保存
+    uint256 public totalSupply;
+    
+    // ✓ 用户数据 - 必须永久保存
+    mapping(address => User) public users;
+}
+```
+
+** 判断标准：**
+- 数据需要在合约的整个生命周期内保持
+- 不同的交易之间需要共享这些数据
+- 数据代表了合约的"状态"
+
+** 步骤2：是否为外部函数参数？ **
+如果数据不需要永久保存，接下来判断数据来源。
+
+** 外部函数参数的定义：**
+```js
+// ✓ 这是外部函数参数
+function transfer(
+    address to,
+    uint256 amount,
+    bytes calldata data  // 外部传入的参数
+) external {
+    // ...
+}
+
+// ✗ 这不是外部函数参数
+function processData() internal {
+    uint256[] memory temp = new uint256[](10);  // 内部创建的临时变量
+    // ...
+}
+```
+** 步骤3：参数是否需要修改？**
+对于外部函数参数，最后一步是判断是否需要修改。
+
+** 对于外部函数参数，最后一步是判断是否需要修改。**
+```js
+// 需要修改，用memory
+function processArray(uint256[] memory data ) external pure returns (uint256[] memory) {
+    // 修改数组内容
+    for (uint i = 0; i < data.length; i++) {
+        data[i] = data[i] * 2;  // 修改操作
+    }
+    return data;
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
