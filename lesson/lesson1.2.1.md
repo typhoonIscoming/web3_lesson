@@ -682,18 +682,205 @@ contract TokenOptimized {
 |函数调用|-|使用内部|约4000个气体|
 |总共|约80,000个气体|约45,000个气体|约35,000个气体（43.75%）|
 
+## 第五部分：常见问题与陷阱
+
+**5.1 过度优化的陷阱**
+```sol
+// 问题：牺牲代码的可执行性追求最优化。
+// ❌ 过度优化：难以理解
+function processData(uint[] calldata d) external {
+    uint l=d.length;uint s;uint t=myValue;
+    for(uint i;i<l;){s+=d[i]*t;unchecked{++i;}}
+    result=s;
+}
+
+// ✅ 平衡优化：保持可读性
+function processData(uint256[] calldata data) external {
+    uint256 length = data.length;
+    uint256 sum = 0;
+    uint256 multiplier = myValue;  // 缓存storage
+    
+    for (uint256 i = 0; i < length; i++) {
+        sum += data[i] * multiplier;
+    }
+    
+    result = sum;
+}
+```
+
+## 5.2 错误的服务器场景
+```sol
+// 问题：只读取一次的变量反而增加了成本。
+// ❌ 无意义的缓存
+function singleUse() external view returns (uint256) {
+    uint256 _value = myValue;  // 额外的本地变量赋值
+    return _value + 1;         // 只用一次
+    // 不如直接：return myValue + 1;
+}
+
+// ✅ 有意义的缓存
+function multipleUse() external view returns (uint256) {
+    uint256 _value = myValue;  // 缓存
+    if (_value > 100) {        // 使用1
+        return _value * 2;     // 使用2
+    }
+    return _value + 10;        // 使用3
+    // 三次使用，缓存有价值
+}
+```
+## 5.3 Calldata 的局限性
+
+历史说明：在 Solidity 0.6.9 之前的版本中，calldata不能在内部函数中使用。但从 0.6.9 开始（包括 0.8.x），这个限制已经被移除。
+
+旧版本的限制（0.6.9之前）：
+
+```sol
+// ❌ 在0.6.9之前会编译错误
+function processData(uint[] calldata data) external {
+    _processInternal(data);  // 错误：不能传递calldata给internal
+}
+
+function _processInternal(uint[] calldata data) internal {
+    // internal函数不能使用calldata（旧版本）
+}
+```
+**现代版本的解决方案（0.6.9+，包括0.8.x）：**
+```sol
+// ✅ 解决方案1：internal函数直接使用calldata（推荐，0.6.9+）
+function processData(uint[] calldata data) external {
+    _processInternal(data);  // 可以直接传递calldata
+}
+
+function _processInternal(uint[] calldata data) internal {
+    // 从0.6.9开始，internal函数可以使用calldata
+    // 优势：避免复制到memory，节省gas
+}
+
+// ✅ 解决方案2：转换为memory（如果需要修改数据）
+function processData(uint[] calldata data) external {
+    uint[] memory dataCopy = data;  // 复制到memory以便修改
+    _processInternal(dataCopy);
+}
+
+function _processInternal(uint[] memory data) internal {
+    data[0] = 100;  // 可以修改memory中的数据
+}
+```
+**何时使用哪种方案：**
+
+- 使用calldata（方案1）：数据修改，减少修改，节省gas
+- 使用内存（方案2）：需要修改数据内容时使用
+
+# 第六部分：练习与思考
+
+## 6.1 实战练习：优化合约
+
+题目：优化以下合约，目标节省至少 20% 的 Gas。
+```sol
+contract PracticeContract {
+    uint256[] public numbers;
+    address public admin;
+    uint256 public multiplier = 2;
+    
+    function batchProcess(
+        uint256[] memory inputs
+    ) external {
+        require(msg.sender == admin);
+        
+        for (uint i = 0; i < inputs.length; i++) {
+            uint256 result = inputs[i] * multiplier;
+            numbers.push(result);
+        }
+    }
+    
+    function getSum() external view returns (uint256) {
+        require(msg.sender == admin);
+        
+        uint256 sum = 0;
+        for (uint i = 0; i < numbers.length; i++) {
+            sum += numbers[i];
+        }
+        return sum;
+    }
+}
+// 优化如下
+contract PracticeContractOptimized {
+    uint256[] public numbers;
+    address public immutable ADMIN;  // ✅ 改为immutable
+    uint256 public constant MULTIPLIER = 2;  // ✅ 改为constant
+    
+    constructor() {
+        ADMIN = msg.sender;
+    }
+    
+    function batchProcess(
+        uint256[] calldata inputs  // ✅ 改为calldata
+    ) external {
+        require(msg.sender == ADMIN, "Not admin");
+        
+        uint256 length = inputs.length;  // ✅ 缓存length
+        
+        for (uint i = 0; i < length; i++) {
+            uint256 result = inputs[i] * MULTIPLIER;  // ✅ 使用constant
+            numbers.push(result);
+        }
+    }
+    
+    function getSum() external view returns (uint256) {
+        require(msg.sender == ADMIN, "Not admin");
+        
+        uint256 sum = 0;
+        uint256 length = numbers.length;  // ✅ 缓存length
+        
+        for (uint i = 0; i < length; i++) {
+            sum += numbers[i];
+        }
+        return sum;
+    }
+}
+
+// 优化效果：
+// - calldata替代memory：~3,000 gas
+// - admin改为immutable：~2,000 gas/次
+// - multiplier改为constant：~2,100 gas/次
+// - 缓存length（两个函数）：~4,000 gas
+// 总节省：约25-30%
+```
 
 
+# 7.2 Gas优化检查清单
+在部署合约前，检查以下优化点：
 
+- [ ] 参数优化
 
+&emsp;&emsp; - [ ] 外部函数的引用类型参数使用calldata
+&ensp;&ensp; - [ ] 缩进一个汉字宽度。
 
+仅在需要修改时使用内存
+ 存储优化
 
+服务器在循环中使用的存储变量
+存储器被多次读取的存储变量
+避免在循环中写入存储
+ 变量优化
 
+小变量备份正确到同一个槽
+不变的值使用常数
+配置时确定的值使用immutable
+ 函数优化
 
+内部调用使用internal或external
+提取公共逻辑到内部函数
+ 循环优化
 
+备份长度
+避免循环中的重复计算
+考虑批量操作
+ 其他优化
 
-
-
+删除不需要的存储写入
+使用事件及存储历史记录
+考虑使用攻击
 
 
 
