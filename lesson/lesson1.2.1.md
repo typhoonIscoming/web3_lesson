@@ -243,8 +243,444 @@ function replaceArray(
 }
 ```
 
+# 第三部分：气体优化六大最佳实践
 
+**3.1 外部参数用Calldata**
 
+核心原则：引用类型的外部函数参数，优先使用calldata。
+
+适用类型：
+1. string calldata
+2. bytes calldata
+3. uint[] calldata
+4. 任何储备类型
+5. 任何结构体类型
+```sol
+// 实战实例
+contract CalldataOptimization {
+    // ✅ 推荐：只读操作用calldata
+    function validateData(
+        bytes calldata data
+    ) external pure returns (bool) {
+        return data.length > 0 && data[0] == 0x01;
+    }
+    
+    // ✅ 推荐：批量查询用calldata
+    function batchQuery(
+        address[] calldata users
+    ) external view returns (uint256[] memory) {
+        uint256[] memory balances = new uint256[](users.length);
+        for (uint i = 0; i < users.length; i++) {
+            balances[i] = address(users[i]).balance;
+        }
+        return balances;
+    }
+    
+    // ❌ 不推荐：除非确实需要修改
+    function processData(
+        bytes memory data  // 只有需要修改时才用memory
+    ) external pure returns (bytes memory) {
+        data[0] = 0xFF;  // 修改操作
+        return data;
+    }
+}
+```
+# 3.2 存储器存储变量
+
+**核心原则：内部访问存储数据，先读取到局部数据。**
+
+**识别模式：**
+```sol
+// 识别：同一个storage变量被多次访问
+function needsCaching() external view {
+    if (owner == msg.sender) {          // 访问1
+        require(balances[owner] > 0);   // 访问2
+        return balances[owner] * 2;     // 访问3
+    }
+}
+// ✅ 优化：缓存到局部变量
+function cached() external view {
+    address _owner = owner;             // 一次SLOAD
+    if (_owner == msg.sender) {
+        uint256 balance = balances[_owner];  // 一次SLOAD
+        require(balance > 0);
+        return balance * 2;
+    }
+}
+```
+**高级示例：绘制地图**
+```sol
+contract NestedMapping {
+    mapping(address => mapping(uint256 => uint256)) public data;
+    
+    // ❌ 未优化：反复访问嵌套映射
+    function unoptimized(address user, uint256 id) external view returns (uint256) {
+        if (data[user][id] > 100) {           // SLOAD 1
+            return data[user][id] * 2;        // SLOAD 2
+        } else {
+            return data[user][id] + 10;       // SLOAD 3
+        }
+    }
+    
+    // ✅ 优化：缓存映射值
+    function optimized(address user, uint256 id) external view returns (uint256) {
+        uint256 value = data[user][id];       // SLOAD 1（仅一次）
+        if (value > 100) {
+            return value * 2;
+        } else {
+            return value + 10;
+        }
+        // 节省：2次SLOAD ≈ 4,200 gas
+    }
+}
+```
+## 3.3 批量操作
+
+核心原则：避免在循环中间隙写入存储。
+
+**反模式识别：**
+```sol
+// ❌ 反模式：循环中的storage写入
+for (uint i = 0; i < n; i++) {
+    storageArray.push(value);     // 每次都是昂贵的SSTORE
+    storageMapping[i] = value;    // 每次都是昂贵的SSTORE
+    storageCounter++;              // 每次都是昂贵的SSTORE
+}
+// 优化：策略
+contract BatchOptimization {
+    uint256[] public results;
+    uint256 public counter;
+    
+    // ✅ 策略1：累积后批量写入
+    function batchAppend(
+        uint256[] calldata newItems
+    ) external {
+        uint256 len = newItems.length;
+        
+        // 先计算，不写入
+        uint256[] memory temp = new uint256[](len);
+        for (uint i = 0; i < len; i++) {
+            temp[i] = newItems[i] * 2;
+        }
+        
+        // 最后批量写入
+        for (uint i = 0; i < len; i++) {
+            results.push(temp[i]);
+        }
+    }
+    
+    // ✅ 策略2：单次更新计数器
+    function processItems(
+        uint256[] calldata items
+    ) external {
+        uint256 count = 0;  // 本地计数
+        
+        for (uint i = 0; i < items.length; i++) {
+            if (items[i] > 100) {
+                count++;  // 只更新本地变量
+            }
+        }
+        counter += count;  // 最后一次性更新storage
+    }
+}
+```
+
+## 3.4 变量资源
+
+**核心原则：** 将多个小变量备份到同一个存储槽。
+
+存储槽机制：
+
+- 每个槽位为32字节（256位）
+- 相邻的小变量会自动备用
+- 一次SLOAD/SSTORE操作整个槽
+```sol
+// 优化对比：
+// ❌ 未优化：每个变量占一个slot
+contract Unoptimized {
+    uint8 a;      // Slot 0 (浪费31字节)
+    uint256 b;    // Slot 1
+    uint8 c;      // Slot 2 (浪费31字节)
+    uint256 d;    // Slot 3
+    
+    // 读取a和c需要2次SLOAD
+    function getValues() external view returns (uint8, uint8) {
+        return (a, c);  // 2次SLOAD ≈ 4,200 gas
+    }
+}
+
+// ✅ 优化：打包到同一个slot
+contract Optimized {
+    uint8 a;      // Slot 0 (前8位)
+    uint8 c;      // Slot 0 (后8位) ✅ 与a共享slot
+    uint256 b;    // Slot 1
+    uint256 d;    // Slot 2
+    
+    // 读取a和c只需1次SLOAD
+    function getValues() external view returns (uint8, uint8) {
+        return (a, c);  // 1次SLOAD ≈ 2,100 gas
+    }
+    // 节省：50%
+}
+
+// 配额规则：
+contract PackingRules {
+    // ✅ 好的打包：同一个slot
+    uint128 var1;  // Slot 0: 前128位
+    uint128 var2;  // Slot 0: 后128位
+    
+    // ✅ 好的打包：三个变量一个slot
+    uint64 var3;   // Slot 1: 0-63位
+    uint64 var4;   // Slot 1: 64-127位
+    uint128 var5;  // Slot 1: 128-255位
+    
+    // ❌ 坏的打包：被uint256打断
+    uint128 var6;  // Slot 2: 前128位
+    uint256 var7;  // Slot 3: 完整256位 (打断了打包)
+    uint128 var8;  // Slot 4: 新的slot
+}
+// 实战示例：用户信息结构
+// ❌ 未优化：占用5个slot
+struct UserUnoptimized {
+    address wallet;      // Slot 0 (20字节，浪费12字节)
+    uint256 balance;     // Slot 1 (32字节)
+    uint8 level;         // Slot 2 (1字节，浪费31字节)
+    bool active;         // Slot 3 (1字节，浪费31字节)
+    uint256 timestamp;   // Slot 4 (32字节)
+}
+
+// ✅ 优化：只占用3个slot
+struct UserOptimized {
+    address wallet;      // Slot 0: 0-159位 (20字节)
+    uint8 level;         // Slot 0: 160-167位 (1字节)
+    bool active;         // Slot 0: 168位 (1字节)
+    // Slot 0还剩余88位可用
+    uint256 balance;     // Slot 1 (32字节)
+    uint256 timestamp;   // Slot 2 (32字节)
+}
+// 节省：2个slot的读写成本 ≈ 40% Gas优化
+```
+## 3.5 使用常量和不可变
+
+**核心原则：不变的价值不宜存储在存储中。**
+
+**常见量类型对比：**
+| 类型	| 设定时间	| 仓储位置	| 天然气成本 |
+| :--: | :--: | :--: | :--: |
+| constant	| 编译时	| 代码中（内联）	| 0 |
+| immutable	| 部署时（构造函数） | 代码中 | 约200种气体 |
+| storage | 运行时 | 贮存 | 约2100个气体 |
+```sol
+contract ConstantOptimization {
+    // ❌ 浪费：不变的值存在storage
+    uint256 public maxSupply = 1000000;  // 每次读取：2,100 gas
+    address public admin = 0x123...;      // 每次读取：2,100 gas
+    
+    // ✅ 优化：使用constant
+    uint256 public constant MAX_SUPPLY = 1000000;  // 读取：0 gas (内联)
+    
+    // ✅ 优化：使用immutable（部署时确定）
+    address public immutable ADMIN;  // 读取：~200 gas
+    
+    constructor(address _admin) {
+        ADMIN = _admin;  // 只能在构造函数中设置
+    }
+    
+    function checkLimit(uint256 amount) external view returns (bool) {
+        // 使用constant：直接替换为1000000，无SLOAD
+        return amount <= MAX_SUPPLY;
+    }
+}
+// 使用场景：
+contract TokenContract {
+    // Constant：编译时已知的常量
+    string public constant NAME = "MyToken";
+    string public constant SYMBOL = "MTK";
+    uint8 public constant DECIMALS = 18;
+    uint256 public constant MAX_SUPPLY = 1000000 * 10**18;
+    
+    // Immutable：部署时确定的值
+    address public immutable FACTORY;
+    address public immutable ROUTER;
+    uint256 public immutable DEPLOYED_AT;
+    // immutable变量特性
+    // 一次性初始化：只能在构造函数中赋值，之后不可修改
+    // 部署时确定值：可以使用构造函数参数或部署时的上下文信息（如block.number）
+    // 存储优化：值直接编码到合约字节码中，减少存储操作
+    // gas高效：读取成本远低于普通状态变量
+    
+    constructor(address factory, address router) {
+        FACTORY = factory;
+        ROUTER = router;
+        DEPLOYED_AT = block.timestamp;
+        // 节省开支：
+        // 一路持续节省：~2,100 汽油
+        // 附带不变的节省：~1,900 汽油
+        // 在高频调用的函数中，节省效果显着
+    }
+    
+    // Storage：运行时可变的值
+    uint256 public totalSupply;
+    mapping(address => uint256) public balances;
+}
+```
+
+## 3.6 避免外部调用
+
+**核心原则：外部调用比内部调用昂贵，能用内部函数就不用外部函数。**
+
+**调用成本对比：**
+|调用类型|天然气基础成本|额外成本|
+|:--:|:--:|:--:|
+|内部的|约20种气体|无|
+|外部的|约700气体|参数复制到calldata|
+|外部（契约间）|约2600个气体|冷访问额外成本|
+```sol
+// 优化示例
+contract CallOptimization {
+    // ❌ 外部函数：昂贵
+    function calculateExternal(uint256 a, uint256 b) external pure returns (uint256) {
+        return a * b + 100;
+    }
+    
+    // ✅ 内部函数：便宜
+    function calculateInternal(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a * b + 100;
+    }
+    
+    // ❌ 低效：在合约内部调用外部函数
+    function processUnoptimized(uint256 x) external view returns (uint256) {
+        // this.calculateExternal() 是外部调用！
+        return this.calculateExternal(x, 2);  // ~700 gas
+    }
+    
+    // ✅ 高效：调用内部函数
+    function processOptimized(uint256 x) external pure returns (uint256) {
+        return calculateInternal(x, 2);  // ~20 gas
+    }
+    // 节省：~680 gas (97%)
+}
+// 重构模式：
+contract RefactoringPattern {
+    uint256 public value;
+    
+    // 设计模式：提供internal版本用于内部调用
+    function _setValue(uint256 newValue) internal {
+        require(newValue > 0, "Invalid value");
+        value = newValue;
+    }
+    
+    // External版本供外部调用
+    function setValue(uint256 newValue) external {
+        _setValue(newValue);
+    }
+    
+    // 其他函数可以高效调用internal版本
+    function doubleValue() external {
+        _setValue(value * 2);  // 内部调用，便宜
+    }
+    
+    function resetValue() external {
+        _setValue(1);  // 内部调用，便宜
+    }
+}
+```
+
+# 第四部分：综合优化实战
+
+**4.1 复杂案例：代币里程碑**
+
+让我们看一个综合应用所有优化技巧的实战案例：
+```sol
+// 未优化版本
+contract TokenUnoptimized {
+    mapping(address => uint256) public balances;
+    address public owner;
+    uint256 public totalSupply;
+    uint256 public feeRate = 100;  // 1%
+    
+    function transfer(
+        address to,
+        uint256 amount,
+        bytes memory data  // ❌ 应该用calldata
+    ) external {
+        // ❌ 多次读取storage
+        require(balances[msg.sender] >= amount);
+        require(to != address(0));
+        require(msg.sender == owner || amount >= 100);  // ❌ 重复读取owner
+        
+        // ❌ 计算手续费时重复读取
+        uint256 fee = amount * feeRate / 10000;  // ❌ 读取feeRate
+        
+        // ❌ 多次写入storage
+        balances[msg.sender] -= amount;
+        balances[to] += amount - fee;
+        balances[owner] += fee;  // ❌ 再次读取owner
+        
+        totalSupply = totalSupply;  // ❌ 无意义的storage写入
+    }
+    
+    // Gas消耗：~80,000
+}
+// 完全优化版本：
+contract TokenOptimized {
+    mapping(address => uint256) public balances;
+    address public immutable OWNER;  // ✅ 使用immutable
+    uint256 public totalSupply;
+    uint256 public constant FEE_RATE = 100;  // ✅ 使用constant
+    
+    constructor() {
+        OWNER = msg.sender;
+    }
+    
+    function transfer(
+        address to,
+        uint256 amount,
+        bytes calldata data  // ✅ 使用calldata
+    ) external {
+        // ✅ 缓存storage变量
+        uint256 senderBalance = balances[msg.sender];
+        
+        // ✅ 验证逻辑
+        require(senderBalance >= amount, "Insufficient balance");
+        require(to != address(0), "Invalid recipient");
+        require(msg.sender == OWNER || amount >= 100, "Amount too small");
+        
+        // ✅ 使用constant，无storage读取
+        uint256 fee = amount * FEE_RATE / 10000;
+        uint256 amountAfterFee = amount - fee;
+        
+        // ✅ 使用内部函数批量更新
+        _updateBalances(msg.sender, to, amount, amountAfterFee, fee);
+    }
+    
+    // ✅ 内部函数：避免外部调用开销
+    function _updateBalances(
+        address from,
+        address to,
+        uint256 amount,
+        uint256 amountAfterFee,
+        uint256 fee
+    ) internal {
+        balances[from] -= amount;
+        balances[to] += amountAfterFee;
+        balances[OWNER] += fee;
+    }
+    
+    // Gas消耗：~45,000
+    // 节省：43.75%
+}
+```
+## 4.2 优化效果对比表
+|优化项|优化前|优化后|节省开支|
+|:--:|:--:|:--:|:--:|
+|参数类型|bytes memory|bytes calldata|约3000个气体|
+|业主读取|2次SLOAD|	不可变访问|	约4000个气体|
+|费率读取|1次SLOAD|	持续访问|约2100个气体|
+|余额读取|重复SLOAD| 存储一次 |约2100个气体|
+|无意义写入|总供应写入|删除|约20,000个气体|
+|函数调用|-|使用内部|约4000个气体|
+|总共|约80,000个气体|约45,000个气体|约35,000个气体（43.75%）|
 
 
 
