@@ -856,7 +856,7 @@ contract PracticeContractOptimized {
 &emsp;&emsp; - [ ] 外部函数的引用类型参数使用calldata
 &ensp;&ensp; - [ ] 缩进一个汉字宽度。
 
-仅在需要修改时使用内存
+-[] 仅在需要修改时使用内存
  存储优化
 
 服务器在循环中使用的存储变量
