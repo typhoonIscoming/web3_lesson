@@ -128,6 +128,128 @@ function needsMemory(
     return string(b);
 }
 ```
+## 技巧2：服务器存储变量
+
+**原理说明：**
+
+存储读取（SLOAD）是昂贵的操作：
+
+- 冷读取（第一次）：~2,100gas
+- 热读取（相同交易内再次读取）：~100gas
+
+即使是热读取，在循环中累积起来也很可观。
+```sol
+// ❌ 未优化：每次循环读取storage
+function badPattern() external view {
+    for (uint i = 0; i < array.length; i++) {  // 每次读取array.length
+        // 10次循环 = 10次SLOAD ≈ 1,000 gas
+        // 处理逻辑...
+    }
+}
+
+// ✅ 优化：缓存到局部变量
+function goodPattern() external view {
+    uint256 len = array.length;  // 只读取一次：~100 gas
+    for (uint i = 0; i < len; i++) {  // 使用局部变量
+        // 10次循环 = 0次额外SLOAD
+        // 处理逻辑...
+    }
+    // 节省：~900 gas
+}
+```
+**复杂示例：多个存储变量**
+```sol
+contract ComplexContract {
+    address public owner;
+    uint256 public feeRate;
+    uint256 public minAmount;
+    
+    // ❌ 未优化
+    function processUnoptimized(uint256 amount) external view returns (uint256) {
+        require(msg.sender == owner);      // SLOAD 1
+        require(amount >= minAmount);      // SLOAD 2
+        uint256 fee = amount * feeRate / 10000;  // SLOAD 3
+        
+        if (msg.sender == owner) {         // SLOAD 4（重复）
+            return amount;
+        }
+        return amount - fee;
+        // 总计：4次SLOAD ≈ 8,400 gas
+    }
+    
+    // ✅ 优化
+    function processOptimized(uint256 amount) external view returns (uint256) {
+        address _owner = owner;            // SLOAD 1
+        uint256 _minAmount = minAmount;    // SLOAD 2
+        uint256 _feeRate = feeRate;        // SLOAD 3
+        
+        require(msg.sender == _owner);
+        require(amount >= _minAmount);
+        uint256 fee = amount * _feeRate / 10000;
+        
+        if (msg.sender == _owner) {        // 使用缓存，无SLOAD
+            return amount;
+        }
+        return amount - fee;
+        // 总计：3次SLOAD ≈ 6,300 gas
+        // 节省：~2,100 gas (25%)
+    }
+}
+```
+**技巧3：大规模操作优化**
+```sol
+// ❌ 低效：循环中逐个写入storage
+function inefficientBatch(
+    uint256[] calldata values
+) external {
+    for (uint i = 0; i < values.length; i++) {
+        array.push(values[i]);  // 每次push都要：
+        // 1. 读取array.length (SLOAD)
+        // 2. 写入新元素 (SSTORE)
+        // 3. 更新length (SSTORE)
+    }
+    // 100个元素 ≈ 2,000,000 gas
+}
+// 优化方案1：使用内存作为中间层
+// ✅ 优化方案：计算与存储分离
+// 注意：如果只是简单的线性 push，多出的内存循环会增加 Gas。
+// 该方案适用于循环中包含复杂计算（如多重乘除、条件分支）的场景。
+function efficientBatch(
+    uint256[] calldata values
+) external {
+    uint256 len = values.length;
+    uint256[] memory processed = new uint256[](len);
+    
+    // 1. 先在 memory 中进行复杂计算（Gas 成本极低）
+    for (uint i = 0; i < len; i++) {
+        // 假设这里有复杂的业务逻辑处理
+        processed[i] = values[i] * 2; 
+    }
+    
+    // 2. 将最终计算结果批量写入 storage
+    // 这样计算逻辑就不会与昂贵的 storage 操作交织在一起
+    for (uint i = 0; i < len; i++) {
+        array.push(processed[i]);
+    }
+}
+// 优化方案2：完全替换（最优化）
+// ✅最优：如果要完全替换数组
+// 在 Solidity 0.8.x 中，直接赋值会自动处理底层循环并进行优化
+function replaceArray(
+    uint256[] calldata newValues
+) external {
+    // 这种直接赋值的方式比手动循环 push 更简洁，编译器也会进行优化
+    array = newValues; 
+}
+```
+
+
+
+
+
+
+
+
 
 
 
