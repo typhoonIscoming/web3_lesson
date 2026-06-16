@@ -853,8 +853,8 @@ contract PracticeContractOptimized {
 
 - [ ] 参数优化
 
-&emsp;&emsp;- [ ] 外部函数的引用类型参数使用calldata
-&ensp;&ensp;- [ ] 缩进一个汉字宽度。
+    - [ ] 外部函数的引用类型参数使用calldata
+    - [ ] 缩进一个汉字宽度。
 
 - [ ] 仅在需要修改时使用内存
     - [ ] 存储优化
