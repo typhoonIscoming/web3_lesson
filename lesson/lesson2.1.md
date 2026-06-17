@@ -207,13 +207,81 @@ contract IntegerOperations {
     }
 }
 ```
+**重要提示：整数除法**
 
+Solidity没有浮点数类型，所有除法运算都是整数除法：
+```sol
+contract DivisionExample {
+    function divide() public pure returns (uint) {
+        uint result = 10 / 3;  // 结果是3，不是3.333...
+        return result;
+    }
+    // 如果需要精度，需要使用定点数技巧
+    function divideWithPrecision() public pure returns (uint) {
+        uint numerator = 10 * 1000;  // 先乘以精度倍数
+        uint denominator = 3;
+        uint result = numerator / denominator;  // 3333
+        // 实际值：3.333（需要在前端除以1000显示）
+        return result;
+    }
+}
+```
+## 3.4 整数溢出保护
+Solidity 0.8.0之前的问题：
 
+在Solidity 0.8.0之前，整数运算可能发生溢出而不报错，这导致了很多安全漏洞。
+```sol
+// 0.8.0之前的危险代码
+uint8 max = 255;
+max = max + 1;  // 溢出到0（循环）
+```
+Solidity 0.8.0+的自动保护：
 
+从0.8.0版本开始，Solidity自动检查整数溢出：
+```sol
+contract OverflowProtection {
+    function testOverflow() public pure returns (uint8) {
+        uint8 max = 255;
+        // 下面这行会导致交易回退
+        return max + 1;  // Error: Arithmetic operation underflowed or overflowed
+    }
+    function testUnderflow() public pure returns (uint8) {
+        uint8 min = 0;
+        // 下面这行会导致交易回退
+        return min - 1;  // Error: Arithmetic operation underflowed or overflowed
+    }
+}
+```
+## unchecked关键字
 
+在某些特殊情况下，如果你确定不会溢出，可以使用unchecked来节省gas：
+```sol
+contract UncheckedExample {
+    // 使用unchecked（谨慎使用！）
+    function incrementUnchecked(uint x) public pure returns (uint) {
+        unchecked {
+            return x + 1;  // 不检查溢出，节省gas
+        }
+    }
+    // 典型应用场景：循环计数器
+    function sumArray(uint[] memory arr) public pure returns (uint) {
+        uint sum = 0;
+        for (uint i = 0; i < arr.length; ) {
+            sum += arr[i];
+            unchecked {
+                i++;  // i不可能溢出，使用unchecked节省gas
+            }
+        }
+        return sum;
+    }
+}
+```
+**何时使用unchecked：**
 
-
-
+1. 循环计数器（数组长度不可能达到uint256上限）
+2. 已经检查过不会溢出的计算
+3. 性能关键路径（需要节省gas）
+**警告：不正确使用unchecked可能导致严重的安全漏洞！**
 
 
 
