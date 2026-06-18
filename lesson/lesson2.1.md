@@ -313,10 +313,144 @@ contract AddressTypes {
     address payable public payableAddress;
 }
 ```
+**两种地址的区别：**
+|特性|address|address payable|
+|:--:|:--:|:--:|
+|接收ETH|不可以|可以|
+|transfer方法|没有|有|
+|send方法|没有|有|
+|余额查询|可以|可以|
+|转换|不能转为payable|可以转为普通address|
 
+## 4.2 地址类型的常用功能
+```sol
+contract AddressFeatures {
+    // 查询地址余额
+    function getBalance(address addr) public view returns (uint) {
+        return addr.balance;  // 返回该地址的ETH余额（单位：wei）
+    }
+    // 获取当前合约地址
+    function getContractAddress() public view returns (address) {
+        return address(this);
+    }
+    // 获取合约余额
+    function getContractBalance() public view returns (uint) {
+        return address(this).balance;
+    }
+    // 检查是否为零地址
+    function isZeroAddress(address addr) public pure returns (bool) {
+        return addr == address(0);
+        // address(0) = 0x0000000000000000000000000000000000000000
+    }
+}
+```
+## 4.3 特殊地址变量
 
+Solidity提供了一些特殊的全局地址变量：
+```sol
+contract SpecialAddresses {
+    function getSpecialAddresses() public view returns (address, address, address) {
+        return (
+            msg.sender,      // 当前调用者的地址
+            tx.origin,       // 交易发起者的地址（最原始的调用者）
+            address(this)    // 当前合约的地址
+        );
+    }
+    // msg.sender vs tx.origin的区别
+    function demonstrateDifference() public view returns (string memory) {
+        // 用户 -> 合约A -> 合约B
+        // 在合约B中：
+        // msg.sender = 合约A的地址
+        // tx.origin = 用户的地址
+        if (msg.sender == tx.origin) {
+            return "Called directly by user";
+        } else {
+            return "Called by another contract";
+        }
+    }
+}
+// 重要安全提示：不要使用tx.origin进行权限验证，因为它容易受到钓鱼攻击！始终使用msg.sender。
+```
+## 4.4 转账功能
 
+address payable类型支持转账功能：
+```sol
+contract TransferExample {
+    // 接收ETH的函数需要payable修饰符
+    receive() external payable {}
+    // transfer方法（推荐，失败会回退）
+    function transferETH(address payable recipient, uint amount) public {
+        recipient.transfer(amount);  // 如果失败，整个交易回退
+    }
+    // send方法（不推荐，需要检查返回值）
+    function sendETH(address payable recipient, uint amount) public returns (bool) {
+        bool success = recipient.send(amount);  // 失败返回false，不回退
+        require(success, "Send failed");
+        return success;
+    }
+    // call方法（最灵活，推荐用于转账）
+    function callTransfer(address payable recipient, uint amount) public {
+        (bool success, ) = recipient.call{value: amount}("");
+        require(success, "Transfer failed");
+    }
+}
+```
+**三种转账方法的对比**
+|方法|Gas限制|失败处理|推荐程度|
+|:--:|:--:|:--:|:--:|
+|transfer|2300 gas|自动回退|中等|
+|send|2300 gas|返回false|低|
+|call|无限制|返回false|高（配合require）|
 
+## 4.5 地址类型转换
+```sol
+contract AddressConversion {
+    // address转为address payable
+    function toPayable(address addr) public pure returns (address payable) {
+        return payable(addr);
+    }
+    // uint160转为address
+    function uintToAddress(uint160 num) public pure returns (address) {
+        return address(num);
+    }
+    // address转为uint160
+    function addressToUint(address addr) public pure returns (uint160) {
+        return uint160(addr);
+    }
+    // 示例：使用转换
+    function convertAndTransfer() public {
+        address normalAddr = msg.sender;
+        address payable payableAddr = payable(normalAddr);
+        // 现在可以向payableAddr转账
+    }
+}
+// 为什么只能和uint160转换？
+// 因为地址是20字节 = 160位，所以只能和uint160进行转换。
+```
+
+# 5. 字节和字符串类型
+
+## 5.1 固定大小字节数组
+
+**固定大小字节数组有bytes1到bytes32，共32种类型：**
+```sol
+contract FixedBytes {
+    bytes1 public b1 = 0x12;
+    bytes4 public b4 = 0x12345678;
+    bytes32 public b32 = 0x1234567890123456789012345678901234567890123456789012345678901234;
+    // 获取长度（固定）
+    function getLength() public pure returns (uint, uint, uint) {
+        bytes1 a;
+        bytes4 b;
+        bytes32 c;
+        return (a.length, b.length, c.length);  // 1, 4, 32
+    }
+    // 访问单个字节
+    function accessByte() public view returns (bytes1) {
+        return b32[0];  // 访问第一个字节
+    }
+}
+```
 
 
 
