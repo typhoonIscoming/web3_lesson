@@ -283,7 +283,23 @@ contract UncheckedExample {
 3. 性能关键路径（需要节省gas）
 **警告：不正确使用unchecked可能导致严重的安全漏洞！**
 
-
+## 3.5 比较运算符
+```sol
+contract ComparisonOperators {
+    function compare() public pure returns (bool, bool, bool, bool, bool, bool) {
+        uint a = 10;
+        uint b = 5;
+        return (
+            a == b,  // 等于：false
+            a != b,  // 不等于：true
+            a > b,   // 大于：true
+            a < b,   // 小于：false
+            a >= b,  // 大于等于：true
+            a <= b   // 小于等于：false
+        );
+    }
+}
+```
 
 
 
