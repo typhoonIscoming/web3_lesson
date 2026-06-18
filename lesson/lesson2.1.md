@@ -300,7 +300,19 @@ contract ComparisonOperators {
     }
 }
 ```
+# 4. 地址类型
 
+## 4.1 地址类型基础
+
+地址类型（address）是Solidity特有的类型，用于存储以太坊地址。一个地址是20字节（160位）的值。
+```sol
+contract AddressTypes {
+    // 普通地址
+    address public normalAddress;
+    // 可支付地址
+    address payable public payableAddress;
+}
+```
 
 
 
