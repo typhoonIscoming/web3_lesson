@@ -122,14 +122,300 @@ contract FixedArrayOperations {
     }
 }
 ```
+## 2.3 定长数组的限制
+```sol
+contract FixedArrayLimitations {
+    uint[5] public numbers = [1, 2, 3, 4, 5];
+    function attemptPush() public {
+        // 编译错误：定长数组不支持push
+        // numbers.push(6);  // Error!
+    }
+    function attemptPop() public {
+        // 编译错误：定长数组不支持pop
+        // numbers.pop();  // Error!
+    }
+    // 可以使用delete设置为默认值
+    function resetElement(uint index) public {
+        delete numbers[index];  // 将numbers[index]设为0
+    }
+}
+```
+## 2.4 定长数组的使用场景
 
+**适合使用定长数组的场景：**
+```sol
+// 1. 固定数量的配置参数：
+contract WeeklySchedule {
+    // 一周7天的工作时间（小时）
+    uint8[7] public workingHours = [8, 8, 8, 8, 8, 0, 0];
+}
+// 2. 预定义的选项集合：
+contract VotingSystem {
+    // 固定的4个选项
+    string[4] public options = ["Option A", "Option B", "Option C", "Option D"];
+}
+// 3. 固定大小的数据记录：
+contract GameBoard {
+    // 3x3的井字棋棋盘
+    uint8[9] public board;  // 0=空, 1=X, 2=O
+}
+```
+# 3. 动态数组
 
+## 3.1 动态数组的声明和初始化
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+contract DynamicArrayExample {
+    // 声明动态数组（空数组）
+    uint[] public numbers;
+    
+    // 声明并初始化
+    address[] public users = [
+        0x5B38Da6a701c568545dCfcB03FcB875f56beddC4,
+        0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2
+    ];
+    // 其他类型的动态数组
+    string[] public names;
+    bool[] public flags;
+    bytes[] public dataList;
+    constructor() {
+        // 在构造函数中添加初始元素
+        numbers.push(1);
+        numbers.push(2);
+        numbers.push(3);
+    }
+}
+```
+## 3.2 动态数组的基本操作
+```sol
+// 添加元素（push）：
+contract DynamicArrayPush {
+    uint[] public numbers;
+    // 添加单个元素
+    function addNumber(uint value) public {
+        numbers.push(value);
+    }
+    // 批量添加元素
+    function addMultiple(uint[] memory values) public {
+        for(uint i = 0; i < values.length; i++) {
+            numbers.push(values[i]);
+        }
+    }
+    // push的返回值（Solidity 0.6.0+）
+    function pushAndGetLength(uint value) public returns (uint) {
+        numbers.push(value);
+        return numbers.length;
+    }
+}
+// 删除最后元素（pop）：
+contract DynamicArrayPop {
+    uint[] public numbers = [1, 2, 3, 4, 5];
+    // 删除最后一个元素
+    function removeLastElement() public {
+        require(numbers.length > 0, "Array is empty");
+        numbers.pop();
+    }
+    // 删除多个元素
+    function removeMultiple(uint count) public {
+        require(count <= numbers.length, "Not enough elements");
+        for(uint i = 0; i < count; i++) {
+            numbers.pop();
+        }
+    }
+    // 获取并删除最后元素
+    function popAndReturn() public returns (uint) {
+        require(numbers.length > 0, "Array is empty");
+        uint lastValue = numbers[numbers.length - 1];
+        numbers.pop();
+        return lastValue;
+    }
+}
+// 获取长度（length）：
+contract ArrayLength {
+    uint[] public data;
+    function getLength() public view returns (uint) {
+        return data.length;
+    }
+    function isEmpty() public view returns (bool) {
+        return data.length == 0;
+    }
+    function addAndCheckLength(uint value) public returns (uint) {
+        data.push(value);
+        return data.length;  // 返回添加后的长度
+    }
+}
+```
+## 3.3 Storage数组 vs Memory数组
+```sol
+// Storage数组（状态变量）：
+contract StorageArray {
+    uint[] public storageArray;  // 存储在区块链上
+    function addToStorage(uint value) public {
+        storageArray.push(value);  // 修改永久保存
+    }
+    function getStorage() public view returns (uint[] memory) {
+        return storageArray;  // 返回storage数组的副本
+    }
+}
+// Memory数组（临时变量）：
+contract MemoryArray {
+    // 在memory中创建数组
+    function createMemoryArray() public pure returns (uint[] memory) {
+        // 必须指定长度
+        uint[] memory arr = new uint[](5);
+        
+        // 可以赋值
+        arr[0] = 1;
+        arr[1] = 2;
+        arr[2] = 3;
+        arr[3] = 4;
+        arr[4] = 5;
+        
+        return arr;
+    }
+    // Memory数组的限制
+    function memoryArrayLimitations() public pure {
+        uint[] memory arr = new uint[](5);
+        // 不能push（编译错误）
+        // arr.push(6);  // Error!
+        
+        // 不能pop（编译错误）
+        // arr.pop();  // Error!
+        
+        // 不能改变长度
+        // arr.length = 10;  // Error!
+    }
+}
+```
+**Storage vs Memory对比：**
+|特性|Storage数组|Memory数组|
+|:--:|:--:|:--:|
+|存储位置|区块链上（永久）|内存中（临时）|
+|创建方式|状态变量声明|new uint[](n)|
+|长度|可变（动态数组）|固定（创建时确定）|
+|push/pop|支持|不支持|
+|Gas成本|高（写入区块链）|低（仅计算）|
+|生命周期|永久|函数执行期间|
 
+# 4. 数组基本操作
 
-
-
-
-
+## 4.1 访问数组元素
+```sol
+contract ArrayAccess {
+    uint[] public numbers = [10, 20, 30, 40, 50];
+    // 通过索引访问
+    function getElement(uint index) public view returns (uint) {
+        require(index < numbers.length, "Index out of bounds");
+        return numbers[index];
+    }
+    // 获取第一个元素
+    function getFirst() public view returns (uint) {
+        require(numbers.length > 0, "Array is empty");
+        return numbers[0];
+    }
+    // 获取最后一个元素
+    function getLast() public view returns (uint) {
+        require(numbers.length > 0, "Array is empty");
+        return numbers[numbers.length - 1];
+    }
+    // 安全访问（返回bool表示是否成功）
+    function tryGetElement(uint index) public view returns (bool, uint) {
+        if (index >= numbers.length) {
+            return (false, 0);
+        }
+        return (true, numbers[index]);
+    }
+}
+```
+## 4.2 修改数组元素
+```sol
+contract ArrayModification {
+    uint[] public numbers = [1, 2, 3, 4, 5];
+    // 修改指定位置的元素
+    function updateElement(uint index, uint value) public {
+        require(index < numbers.length, "Index out of bounds");
+        numbers[index] = value;
+    }
+    // 递增元素值
+    function incrementElement(uint index) public {
+        require(index < numbers.length, "Index out of bounds");
+        numbers[index] += 1;
+    }
+    // 批量修改
+    function updateMultiple(uint[] memory indices, uint[] memory values) public {
+        require(indices.length == values.length, "Length mismatch");
+        
+        for(uint i = 0; i < indices.length; i++) {
+            require(indices[i] < numbers.length, "Index out of bounds");
+            numbers[indices[i]] = values[i];
+        }
+    }
+    // 重置所有元素为0
+    function resetAll() public {
+        delete numbers;  // 清空数组，length变为0
+    }
+}
+```
+## 4.3 获取整个数组
+```sol
+contract GetWholeArray {
+    uint[] public numbers;
+    constructor() {
+        numbers.push(1);
+        numbers.push(2);
+        numbers.push(3);
+    }
+    // 返回整个数组
+    function getAllNumbers() public view returns (uint[] memory) {
+        return numbers;
+    }
+    // 返回数组副本并进行处理
+    function getDoubledArray() public view returns (uint[] memory) {
+        uint[] memory result = new uint[](numbers.length);
+        for(uint i = 0; i < numbers.length; i++) {
+            result[i] = numbers[i] * 2;
+        }
+        return result;
+    }
+}
+```
+## 4.4 delete操作的陷阱
+```sol
+contract DeleteTrap {
+    uint[] public numbers = [1, 2, 3, 4, 5];
+    // delete单个元素
+    function deleteElement(uint index) public {
+        require(index < numbers.length, "Index out of bounds");
+        delete numbers[index];
+        // 结果：numbers[index] = 0
+        // 重要：length不变！
+    }
+    // 演示delete的问题
+    function demonstrateDeleteProblem() public {
+        // 初始：[1, 2, 3, 4, 5], length = 5
+        delete numbers[2];
+        // 结果：[1, 2, 0, 4, 5], length = 5
+        // 注意：3变成了0，但数组长度仍然是5
+        // 留下了一个"空洞"
+    }
+    // delete整个数组
+    function deleteArray() public {
+        delete numbers;
+        // 结果：[], length = 0
+        // 清空整个数组
+    }
+    // 检查空洞
+    function hasZeros() public view returns (bool) {
+        for(uint i = 0; i < numbers.length; i++) {
+            if(numbers[i] == 0) {
+                return true;  // 发现空洞
+            }
+        }
+        return false;
+    }
+}
+```
 
 
 
