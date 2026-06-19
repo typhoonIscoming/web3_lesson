@@ -564,18 +564,185 @@ contract RemovalComparison {
 |使用场景|推荐方法|原因|
 |:--:|:--:|:--:|
 |需要保持顺序（如排行榜）|保序删除|顺序重要|
-|数组很小（<20个元素）|保序删除|Gas差异小|
+|数组很小(小于20个元素)|保序删除|Gas差异小|
 |数组较大且顺序不重要|快速删除|节省Gas|
 |用户列表、ID列表|快速删除|顺序无关紧要|
 |历史记录、时间序列|保序删除|时间顺序重要|
 
+# 6. 数组遍历
+## 6.1 基本遍历方法
+```sol
+contract ArrayIteration {
+    uint[] public numbers;
+    constructor() {
+        for(uint i = 1; i <= 10; i++) {
+            numbers.push(i);
+        }
+    }
+    // 基本遍历
+    function iterateArray() public view returns (uint) {
+        uint sum = 0;
+        for(uint i = 0; i < numbers.length; i++) {
+            sum += numbers[i];
+        }
+        return sum;
+    }
+    // 查找元素
+    function findElement(uint value) public view returns (bool, uint) {
+        for(uint i = 0; i < numbers.length; i++) {
+            if(numbers[i] == value) {
+                return (true, i);  // 找到，返回索引
+            }
+        }
+        return (false, 0);  // 未找到
+    }
+    // 过滤元素
+    function filterGreaterThan(uint threshold) public view returns (uint[] memory) {
+        // 第一次遍历：计数
+        uint count = 0;
+        for(uint i = 0; i < numbers.length; i++) {
+            if(numbers[i] > threshold) {
+                count++;
+            }
+        }
+        // 创建结果数组
+        uint[] memory result = new uint[](count);
+        // 第二次遍历：填充
+        uint index = 0;
+        for(uint i = 0; i < numbers.length; i++) {
+            if(numbers[i] > threshold) {
+                result[index] = numbers[i];
+                index++;
+            }
+        }
+        
+        return result;
+    }
+}
+```
+## 6.2 遍历的Gas风险
+**危险示例：无限增长的数组**
+```sol
+contract DangerousIteration {
+    uint[] public data;
+    // 危险：允许无限添加
+    function addData(uint value) public {
+        data.push(value);
+        // 问题：没有限制数组大小
+    }
+    // 危险：遍历可能gas耗尽
+    function sumAll() public view returns (uint) {
+        uint total = 0;
+        for(uint i = 0; i < data.length; i++) {
+            total += data[i];
+        }
+        return total;
+        // 如果data有10,000个元素，这个函数将无法执行！
+    }
+}
+// 问题分析：
+// 假设数组有10,000个元素：
+// 每次循环约消耗：5,000 gas（读取storage）
+// 总需求：10,000 × 5,000 = 50,000,000 gas
+// 以太坊区块gas限制：约30,000,000 gas
+// 结果：函数永远无法执行，合约"僵死"
 
+```
+**真实案例影响：**
 
+多个DeFi项目因为大数组遍历导致：
 
+1. 用户无法提取资金
+2. 合约功能失效
+3. 需要重新部署合约
+4. 造成重大损失
 
-
-
-
+# 6.3 安全遍历实践
+```sol
+contract SafeIteration {
+    uint[] public data;
+    uint public constant MAX_ARRAY_SIZE = 100;
+    // 安全实践1：限制数组大小
+    function safePush(uint value) public {
+        require(data.length < MAX_ARRAY_SIZE, "Array is full");
+        data.push(value);
+    }
+    // 安全实践2：分批处理
+    function sumRange(uint start, uint end) public view returns (uint) {
+        require(start < end, "Invalid range");
+        require(end <= data.length, "End out of bounds");
+        require(end - start <= 50, "Range too large");  // 限制单次处理量
+        
+        uint total = 0;
+        for(uint i = start; i < end; i++) {
+            total += data[i];
+        }
+        return total;
+    }
+    
+    // 安全实践3：提供分页查询
+    function getPage(uint pageNumber, uint pageSize) 
+        public view returns (uint[] memory) 
+    {
+        require(pageSize <= 20, "Page size too large");
+        
+        uint start = pageNumber * pageSize;
+        require(start < data.length, "Page out of bounds");
+        
+        uint end = start + pageSize;
+        if(end > data.length) {
+            end = data.length;
+        }
+        
+        uint[] memory result = new uint[](end - start);
+        for(uint i = start; i < end; i++) {
+            result[i - start] = data[i];
+        }
+        
+        return result;
+    }
+}
+```
+## 6.4 遍历优化技巧
+```sol
+contract IterationOptimization {
+    uint[] public numbers;
+    
+    // 优化前：每次读取length
+    function sumBad() public view returns (uint) {
+        uint total = 0;
+        for(uint i = 0; i < numbers.length; i++) {  // 每次循环读取length
+            total += numbers[i];
+        }
+        return total;
+        // Gas: 约 25,000（100个元素）
+    }
+    
+    // 优化后：缓存length
+    function sumGood() public view returns (uint) {
+        uint total = 0;
+        uint len = numbers.length;  // 缓存length
+        for(uint i = 0; i < len; i++) {
+            total += numbers[i];
+        }
+        return total;
+        // Gas: 约 23,000（100个元素）
+        // 节省约 8%
+    }
+    
+    // 优化：unchecked（谨慎使用）
+    function sumOptimized() public view returns (uint) {
+        uint total = 0;
+        uint len = numbers.length;
+        for(uint i = 0; i < len; ) {
+            total += numbers[i];
+            unchecked { i++; }  // i不会溢出
+        }
+        return total;
+        // 进一步节省gas
+    }
+}
+```
 
 
 
