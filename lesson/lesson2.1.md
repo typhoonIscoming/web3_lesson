@@ -450,20 +450,264 @@ contract FixedBytes {
         return b32[0];  // 访问第一个字节
     }
 }
+// 常见用途
+contract BytesUseCases {
+    // 1. 存储哈希值
+    bytes32 public fileHash;
+    
+    function storeHash(string memory data) public {
+        fileHash = keccak256(bytes(data));
+    }
+    // 2. 存储签名
+    bytes32 public r;
+    bytes32 public s;
+    uint8 public v;
+    
+    // 3. 紧凑数据存储
+    bytes4 public functionSelector = 0x70a08231;  // balanceOf(address)的函数选择器
+}
+// bytes32最常用：
+// 因为大多数哈希函数（如keccak256、SHA256）返回32字节的哈希值，所以bytes32是最常用的字节类型
 ```
+## 5.2 动态字节数组
+**bytes是动态长度的字节数组：**
+```sol
+contract DynamicBytes {
+    bytes public data;
+    // 添加字节
+    function pushByte() public {
+        data.push(0x12);
+    }
+    // 获取长度
+    function getLength() public view returns (uint) {
+        return data.length;
+    }
+    // 访问元素
+    function getByte(uint index) public view returns (bytes1) {
+        require(index < data.length, "Index out of bounds");
+        return data[index];
+    }
+    // 删除最后一个元素
+    function popByte() public {
+        data.pop();
+    }
+}
+```
+## 5.3 字符串类型
 
+**字符串（string）本质上是UTF-8编码的动态字节数组。**
+```sol
+contract StringExample {
+    string public name = "Solidity";
+    string public greeting;
+    // 设置字符串
+    function setGreeting(string memory _msg) public {
+        greeting = _msg;
+    }
+    // 获取字符串
+    function getGreeting() public view returns (string memory) {
+        return greeting;
+    }
+}
+```
+**字符串的限制：**
+```sol
+contract StringLimitations {
+    string public str1 = "Hello";
+    string public str2 = "World";
+    
+    // 错误：不能直接比较
+    // function compare() public view returns (bool) {
+    //     return str1 == str2;  // 编译错误！
+    // }
+    
+    // 错误：不能直接获取长度
+    // function getLength() public view returns (uint) {
+    //     return str1.length;  // 编译错误！
+    // }
+    
+    // 错误：不能直接拼接（0.8.12之前）
+    // function concat() public view returns (string memory) {
+    //     return str1 + str2;  // 编译错误！
+    // }
+}
+```
+## 5.4 字符串操作
+```sol
+contract StringComparison {
+    // 正确的字符串比较方法：比较哈希值
+    function compareStrings(
+        string memory a,
+        string memory b
+    ) public pure returns (bool) {
+        return keccak256(bytes(a)) == keccak256(bytes(b));
+    }
+    // 使用示例
+    function testComparison() public pure returns (bool, bool) {
+        return (
+            compareStrings("Hello", "Hello"),  // true
+            compareStrings("Hello", "World")   // false
+        );
+    }
+}
+```
+**字符串拼接（Solidity 0.8.12+）：**
+```sol
+contract StringConcatenation {
+    // 使用string.concat（0.8.12+）
+    function concatenate(
+        string memory a,
+        string memory b
+    ) public pure returns (string memory) {
+        return string.concat(a, " ", b);
+    }
+    // 使用示例
+    function testConcat() public pure returns (string memory) {
+        return concatenate("Hello", "World");  // "Hello World"
+    }
+    // 拼接多个字符串
+    function concatMultiple() public pure returns (string memory) {
+        return string.concat("Hello", " ", "Solidity", " ", "World");
+    }
+}
+```
+**字符串与bytes转换：**
+```sol
+contract StringBytesConversion {
+    // 字符串转bytes
+    function stringToBytes(string memory str) public pure returns (bytes memory) {
+        return bytes(str);
+    }
+    // 获取字符串长度（通过转换为bytes）
+    function getStringLength(string memory str) public pure returns (uint) {
+        return bytes(str).length;
+    }
+    // bytes转字符串
+    function bytesToString(bytes memory data) public pure returns (string memory) {
+        return string(data);
+    }
+}
+```
+# 6. 枚举类型
+## 6.1 枚举基础
 
+枚举（enum）用于定义一组命名的常量，提高代码可读性。
+```sol
+contract EnumExample {
+    // 定义枚举
+    enum Status {
+        Pending,    // 0
+        Approved,   // 1
+        Rejected,   // 2
+        Cancelled   // 3
+    }
+    // 使用枚举
+    Status public currentStatus;
+    // 构造函数中设置初始状态
+    constructor() {
+        currentStatus = Status.Pending;
+    }
+}
+```
+**枚举的特点：**
 
+1. 枚举值从0开始自动编号
+2. 枚举本质上是uint8类型
+3. 可以显式转换为整数
+4. 提高代码可读性和类型安全
 
+## 6.2 枚举操作
+```sol
+contract EnumOperations {
+    enum OrderStatus {
+        Created,    // 0
+        Paid,       // 1
+        Shipped,    // 2
+        Delivered,  // 3
+        Cancelled   // 4
+    }
+    OrderStatus public status;
+    // 设置状态
+    function createOrder() public {
+        status = OrderStatus.Created;
+    }
+    function payOrder() public {
+        require(status == OrderStatus.Created, "Order not created");
+        status = OrderStatus.Paid;
+    }
+    function shipOrder() public {
+        require(status == OrderStatus.Paid, "Order not paid");
+        status = OrderStatus.Shipped;
+    }
+    // 检查状态
+    function isPaid() public view returns (bool) {
+        return status == OrderStatus.Paid;
+    }
+    // 枚举转整数
+    function getStatusAsUint() public view returns (uint) {
+        return uint(status);
+    }
+    // 整数转枚举（需要检查范围）
+    function setStatusFromUint(uint _status) public {
+        require(_status <= uint(OrderStatus.Cancelled), "Invalid status");
+        status = OrderStatus(_status);
+    }
+}
+```
+## 6.3 枚举的实际应用
+```sol
+contract Crowdfunding {
+    enum ProjectStatus {
+        Fundraising,  // 募资中
+        Successful,   // 成功
+        Failed        // 失败
+    }
+    ProjectStatus public status = ProjectStatus.Fundraising;
+    uint public goal = 100 ether;
+    uint public raised;
+    
+    function contribute() public payable {
+        require(status == ProjectStatus.Fundraising, "Not fundraising");
+        raised += msg.value;
+    }
+    function finalize() public {
+        require(status == ProjectStatus.Fundraising, "Already finalized");
+        
+        if (raised >= goal) {
+            status = ProjectStatus.Successful;
+        } else {
+            status = ProjectStatus.Failed;
+        }
+    }
+}
+```
+## 6.4 枚举的优势
+**1. 提高可读性：**
+```sol
+// 使用枚举（清晰）
+if (status == OrderStatus.Paid) {
+    // ...
+}
+// 使用数字（不清晰）
+if (status == 1) {
+    // ...
+}
+```
+**2. 类型安全：**
+```sol
+contract TypeSafety {
+    enum Status { Pending, Approved, Rejected }
+    Status public status;
+    // 只能赋值为枚举中定义的值
+    function setStatus() public {
+        status = Status.Approved;  // 正确
+        // status = 10;  // 编译错误
+    }
+}
+```
+**3. 节省Gas：**
 
-
-
-
-
-
-
-
-
+枚举本质是uint8，比使用string存储状态更省gas。
 
 
 
