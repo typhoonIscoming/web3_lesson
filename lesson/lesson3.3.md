@@ -449,11 +449,158 @@ contract MultiLevelMapping {
 |Array|可以遍历|O(n)查找|
 |Mapping+Array|O(1)查找 + 可遍历|需要维护一致性|
 
+## 4.2 基本组合模式
+```sol
+contract MappingArrayCombo {
+    // 主数据存储
+    mapping(address => uint256) public balances;
+    
+    // 键列表（用于遍历）
+    address[] public userList;
+    
+    // 存在性检查（用于去重）
+    mapping(address => bool) public isUser;
+    
+    // 添加用户
+    function addUser(address user, uint256 balance) public {
+        require(!isUser[user], "User already exists");
+        
+        // 设置余额
+        balances[user] = balance;
+        
+        // 添加到列表
+        userList.push(user);
+        
+        // 标记为已存在
+        isUser[user] = true;
+    }
+    
+    // 快速查找（O(1)）
+    function getBalance(address user) public view returns (uint256) {
+        return balances[user];
+    }
+    
+    // 检查用户是否存在（O(1)）
+    function checkUser(address user) public view returns (bool) {
+        return isUser[user];
+    }
+    
+    // 遍历所有用户
+    function getAllUsers() public view returns (address[] memory) {
+        return userList;
+    }
+    
+    // 获取用户数量
+    function getUserCount() public view returns (uint256) {
+        return userList.length;
+    }
+    
+    // 批量查询余额
+    function getAllBalances() public view returns (uint256[] memory) {
+        uint256[] memory allBalances = new uint256[](userList.length);
+        
+        for(uint256 i = 0; i < userList.length; i++) {
+            allBalances[i] = balances[userList[i]];
+        }
+        
+        return allBalances;
+    }
+}
+```
+## 4.3 组合模式架构图
+```sol
+添加用户流程：
 
+addUser(0x123, 1000)
+        |
+        +------------------+------------------+
+        |                  |                  |
+        v                  v                  v
+balances[0x123]     userList.push()      isUser[0x123]
+    = 1000             (0x123)              = true
+        |                  |                  |
+        +------------------+------------------+
+                          |
+                    添加完成
 
+查询流程：
 
+快速查找余额：balances[0x123] → O(1)
+检查用户存在：isUser[0x123] → O(1)
+遍历所有用户：for(userList) → O(n)
+```
+## 4.4 删除操作的优化
+删除元素时需要同时维护mapping和array的一致性。
+```sol
+contract DeleteOptimization {
+    mapping(address => uint256) public balances;
+    address[] public userList;
+    mapping(address => bool) public isUser;
+    mapping(address => uint256) public userIndex;  // 记录索引
+    
+    // 添加用户
+    function addUser(address user, uint256 balance) public {
+        require(!isUser[user], "User already exists");
+        
+        balances[user] = balance;
+        userIndex[user] = userList.length;  // 记录索引
+        userList.push(user);
+        isUser[user] = true;
+    }
+    
+    // 删除用户（快速删除，不保序）
+    function removeUser(address user) public {
+        require(isUser[user], "User does not exist");
+        
+        uint256 index = userIndex[user];
+        uint256 lastIndex = userList.length - 1;
+        
+        // 如果不是最后一个元素，用最后一个元素替换
+        if(index != lastIndex) {
+            address lastUser = userList[lastIndex];
+            userList[index] = lastUser;
+            userIndex[lastUser] = index;
+        }
+        
+        // 删除最后一个元素
+        userList.pop();
+        
+        // 清理mapping
+        delete balances[user];
+        delete isUser[user];
+        delete userIndex[user];
+    }
+}
+```
+**删除过程示例**
+```sol
+初始状态：
+userList = [0xA, 0xB, 0xC, 0xD]
+userIndex[0xA] = 0
+userIndex[0xB] = 1
+userIndex[0xC] = 2
+userIndex[0xD] = 3
 
+删除 0xB：
 
+步骤1：找到索引
+index = userIndex[0xB] = 1
+
+步骤2：用最后元素替换
+userList[1] = userList[3] = 0xD
+userIndex[0xD] = 1
+
+步骤3：删除最后元素
+userList.pop()
+
+步骤4：清理mapping
+delete balances[0xB]
+delete isUser[0xB]
+delete userIndex[0xB]
+
+结果：
+userList = [0xA, 0xD, 0xC]
+```
 
 
 
