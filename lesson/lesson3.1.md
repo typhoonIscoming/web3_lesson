@@ -416,21 +416,158 @@ contract DeleteTrap {
     }
 }
 ```
+**delete操作总结：**
+|操作|效果|length变化|注意事项|
+|:--:|:--:|:--:|:--:|
+|delete arr[i]|元素重置为0|不变|留下空洞|
+|delete arr|清空数组|变为0|完全清空|
+|arr.pop()|删除最后元素|减1|真正删除|
 
+# 5. 删除数组元素
 
+## 5.1 删除方法对比
 
+在Solidity中，真正删除数组中间的元素需要特殊处理。有两种主要方法：
 
+1. 方法1：保持顺序（移动元素）
 
+优点：保持元素的原有顺序 缺点：Gas消耗高（需要移动多个元素）
 
+2. 方法2：快速删除（不保序）
 
+优点：Gas消耗低（只需两步操作） 缺点：不保持元素顺序
 
+## 5.2 方法1：保持顺序删除
+```sol
+contract OrderedRemoval {
+    uint[] public numbers;
+    constructor() {
+        numbers = [1, 2, 3, 4, 5];
+    }
+    // 删除指定索引的元素，保持顺序
+    function removeOrdered(uint index) public {
+        require(index < numbers.length, "Index out of bounds");
+        
+        // 将后面的元素向前移动
+        for(uint i = index; i < numbers.length - 1; i++) {
+            numbers[i] = numbers[i + 1];
+        }
+        // 删除最后一个元素
+        numbers.pop();
+    }
+    // 示例演示
+    function demonstrateOrderedRemoval() public {
+        // 初始：[1, 2, 3, 4, 5]
+        removeOrdered(1);  // 删除索引1的元素（值为2）
+        // 结果：[1, 3, 4, 5]
+        // 顺序保持：3、4、5向前移动
+    }
+}
+// 执行过程详解
+初始数组：[1, 2, 3, 4, 5]
+删除索引1（值为2）：
 
+步骤1：i=1, numbers[1] = numbers[2]  → [1, 3, 3, 4, 5]
+步骤2：i=2, numbers[2] = numbers[3]  → [1, 3, 4, 4, 5]
+步骤3：i=3, numbers[3] = numbers[4]  → [1, 3, 4, 5, 5]
+步骤4：pop()                         → [1, 3, 4, 5]
 
+最终结果：[1, 3, 4, 5]
+```
+**Gas分析：**
+假设删除索引为index，数组长度为n：
 
+* 需要移动的元素数量：n - index - 1
+* 每次赋值约消耗：5,000 gas（storage写入）
+* 总Gas消耗：约5,000 × (n - index - 1) + 5,000（pop）
 
+## 5.3 方法2：快速删除（不保序）
+```sol
+contract UnorderedRemoval {
+    uint[] public numbers;
+    constructor() {
+        numbers = [1, 2, 3, 4, 5];
+    }
+    // 快速删除，不保持顺序
+    function removeUnordered(uint index) public {
+        require(index < numbers.length, "Index out of bounds");
+        
+        // 用最后一个元素替换要删除的元素
+        numbers[index] = numbers[numbers.length - 1];
+        
+        // 删除最后一个元素
+        numbers.pop();
+    }
+    // 示例演示
+    function demonstrateUnorderedRemoval() public {
+        // 初始：[1, 2, 3, 4, 5]
+        removeUnordered(1);  // 删除索引1的元素（值为2）
+        // 结果：[1, 5, 3, 4]
+        // 最后的5移到了索引1的位置
+    }
+}
+// 执行过程详解：
+初始数组：[1, 2, 3, 4, 5]
+删除索引1（值为2）：
 
+步骤1：numbers[1] = numbers[4]  → [1, 5, 3, 4, 5]
+步骤2：pop()                    → [1, 5, 3, 4]
 
+最终结果：[1, 5, 3, 4]
+```
+**Gas分析：**
 
+* 一次赋值：约5,000 gas
+* 一次pop：约5,000 gas
+* 总Gas消耗：约10,000 gas（常量，不随数组大小变化）
+
+## 5.4 删除方法选择指南
+```sol
+contract RemovalComparison {
+    uint[] public orderedArray;
+    uint[] public unorderedArray;
+    // 初始化两个相同的数组
+    function initialize() public {
+        delete orderedArray;
+        delete unorderedArray;
+        
+        for(uint i = 1; i <= 100; i++) {
+            orderedArray.push(i);
+            unorderedArray.push(i);
+        }
+    }
+    // 保序删除（Gas高）
+    function testOrderedRemoval() public {
+        require(orderedArray.length > 50, "Not enough elements");
+        
+        // 删除中间元素（索引50）
+        for(uint i = 50; i < orderedArray.length - 1; i++) {
+            orderedArray[i] = orderedArray[i + 1];
+        }
+        orderedArray.pop();
+        // Gas: 约 250,000（需要移动50个元素）
+    }
+    
+    // 快速删除（Gas低）
+    function testUnorderedRemoval() public {
+        require(unorderedArray.length > 50, "Not enough elements");
+        
+        // 删除中间元素（索引50）
+        unorderedArray[50] = unorderedArray[unorderedArray.length - 1];
+        unorderedArray.pop();
+        // Gas: 约 10,000（固定消耗）
+    }
+}
+```
+**何时使用哪种方法：**
+
+|使用场景|推荐方法|原因|
+|:--:|:--:|:--:|
+|需要保持顺序（如排行榜）|保序删除|顺序重要|
+|数组很小（<20个元素）|保序删除|Gas差异小|
+|数组较大且顺序不重要|快速删除|节省Gas|
+|用户列表、ID列表|快速删除|顺序无关紧要|
+|历史记录、时间序列|保序删除|时间顺序重要|
 
 
 
