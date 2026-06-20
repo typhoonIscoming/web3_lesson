@@ -395,14 +395,65 @@ contract VisibilityChoice {
     }
 }
 ```
+**最佳实践：**
 
+1. 默认使用最严格的可见性：从private开始，需要时再放宽
+2. 对外接口明确：public或external清楚表明意图
+3. 大数组用external：显著节省gas
+4. 内部函数用下划线：_functionName作为命名约定
 
+# 3. 状态修饰符
+## 3.1 状态修饰符概览
 
+状态修饰符定义了函数与区块链状态的交互方式。
+|修饰符|读取状态|修改状态|接收ETH|Gas消耗（外部调用）|
+|:--:|:--:|:--:|:--:|:--:|
+|默认|可以|可以|不可以|正常消耗|
+|view|可以|不可以|不可以|0（不改变状态）|
+|pure|不可以|不可以|不可以|0（不改变状态）|
+|payable|可以|可以|可以|正常消耗|
 
+**选择建议：**
 
+* 需要修改状态？→ 默认或payable
+* 只读取状态？→ view
+* 不读不写？→ pure
+* 需要接收ETH？→ payable
 
+重要提示：能用pure就pure，能用view就view！
 
-
+## 3.2 View - 只读函数
+view函数承诺不修改状态，只读取数据。
+```sol
+contract ViewExample {
+    uint256 public counter = 0;
+    address public owner;
+    constructor() {
+        owner = msg.sender;
+    }
+    // view函数：读取状态变量
+    function getCounter() public view returns (uint256) {
+        return counter;  // 可以读取状态
+    }
+    // view函数：可以读取多个状态变量
+    function getInfo() public view returns (uint256, address) {
+        return (counter, owner);
+    }
+    // view函数：可以读取全局变量
+    function getBlockInfo() public view returns (uint256, address) {
+        return (block.timestamp, msg.sender);
+    }
+    // view函数：可以进行计算
+    function calculateDouble() public view returns (uint256) {
+        return counter * 2;  // 读取并计算
+    }
+    // view函数：可以调用其他view函数
+    function complexView() public view returns (uint256) {
+        uint256 c = getCounter();
+        return c * 2;
+    }
+}
+```
 
 
 
