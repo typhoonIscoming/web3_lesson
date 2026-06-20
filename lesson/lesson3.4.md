@@ -569,23 +569,508 @@ contract StructWithMapping {
     }
 }
 ```
+**包含mapping的struct的限制：**
+1. 只能在storage中：不能在memory或calldata
+2. 不能作为参数：不能传递给函数
+3. 不能作为返回值：不能返回
+4. 不能在数组中：不能创建包含mapping的struct数组
+```sol
+contract MappingStructLimitations {
+    struct ProposalWithMapping {
+        string description;
+        mapping(address => bool) voters;
+    }
+    
+    // 正确：storage中使用
+    mapping(uint256 => ProposalWithMapping) public proposals;
+    
+    // 错误：不能作为参数
+    // function process(ProposalWithMapping memory p) public {
+    //     // 编译错误！
+    // }
+    
+    // 错误：不能作为返回值
+    // function getProposal(uint256 id) 
+    //     public view returns (ProposalWithMapping memory) {
+    //     // 编译错误！
+    // }
+    
+    // 错误：不能在数组中
+    // ProposalWithMapping[] public proposalArray;  // 编译错误！
+}
+```
+
+# 7. 常见设计模式
+
+## 7.1 模式1：用户管理系统
+```sol
+contract UserManagement {
+    struct User {
+        string name;
+        uint256 balance;
+        bool exists;
+    }
+    
+    mapping(address => User) public users;
+    address[] public userList;
+    
+    function register(string memory name) public {
+        require(!users[msg.sender].exists, "Already registered");
+        
+        users[msg.sender] = User(name, 0, true);
+        userList.push(msg.sender);
+    }
+}
+// 使用场景：任何需要管理用户的应用
+```
+## 7.2 模式2：ID自增系统
+```sol
+contract IDSystem {
+    struct Item {
+        string name;
+        address owner;
+        uint256 createdAt;
+    }
+    
+    mapping(uint256 => Item) public items;
+    uint256 public itemCount;
+    
+    function createItem(string memory name) public returns (uint256) {
+        uint256 itemId = itemCount++;
+        
+        items[itemId] = Item({
+            name: name,
+            owner: msg.sender,
+            createdAt: block.timestamp
+        });
+        
+        return itemId;
+    }
+}
+// 使用场景：NFT、订单系统、票务系统
+```
+## 7.3 模式3：双向映射
+```sol
+contract BidirectionalMapping {
+    mapping(address => uint256) public addressToId;
+    mapping(uint256 => address) public idToAddress;
+    uint256 public nextId;
+    
+    function register() public returns (uint256) {
+        require(addressToId[msg.sender] == 0, "Already registered");
+        
+        uint256 id = ++nextId;
+        addressToId[msg.sender] = id;
+        idToAddress[id] = msg.sender;
+        
+        return id;
+    }
+    
+    function getUserByAddress(address user) public view returns (uint256) {
+        return addressToId[user];
+    }
+    
+    function getAddressById(uint256 id) public view returns (address) {
+        return idToAddress[id];
+    }
+}
+// 使用场景：需要双向查询的系统
+```
+## 7.4 模式4：一对多关系
+```sol
+contract OneToMany {
+    // 用户 → 关注列表
+    mapping(address => address[]) public following;
+    
+    // 用户 → 粉丝列表
+    mapping(address => address[]) public followers;
+    
+    // 快速检查是否关注
+    mapping(address => mapping(address => bool)) public isFollowing;
+    
+    function follow(address user) public {
+        require(!isFollowing[msg.sender][user], "Already following");
+        require(msg.sender != user, "Cannot follow yourself");
+        
+        following[msg.sender].push(user);
+        followers[user].push(msg.sender);
+        isFollowing[msg.sender][user] = true;
+    }
+    
+    function getFollowing(address user) public view returns (address[] memory) {
+        return following[user];
+    }
+    
+    function getFollowers(address user) public view returns (address[] memory) {
+        return followers[user];
+    }
+}
+// 使用场景：社交网络、关注系统
+```
+## 7.5 模式5：计数器模式
+```sol
+contract CounterPattern {
+    struct TokenInfo {
+        string name;
+        uint256 supply;
+    }
+    
+    mapping(address => uint256) public balances;
+    mapping(uint256 => TokenInfo) public tokens;
+    
+    uint256 public totalSupply;
+    uint256 public tokenCount;
+    
+    function mint(address to, uint256 amount) public {
+        balances[to] += amount;
+        totalSupply += amount;  // 保持总量一致
+    }
+    
+    function createToken(string memory name, uint256 supply) public {
+        tokens[tokenCount++] = TokenInfo(name, supply);
+    }
+}
+// 使用场景：代币系统、供应量管理
+```
+
+# 8. 实战练习
+
+练习1：完整用户管理系统
+需求：
+
+创建一个完整的用户管理系统，实现以下功能：
+
+1. 用户注册（包含name、email）
+2. 更新个人资料
+3. 存款功能（payable）
+4. 查询用户信息
+5. 获取所有用户列表
+6. 分批查询用户
+7. 限制最多1000个用户
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract UserManagementSystem {
+    struct User {
+        string name;
+        string email;
+        uint256 balance;
+        uint256 registeredAt;
+        bool exists;
+    }
+    
+    mapping(address => User) public users;
+    address[] public userAddresses;
+    uint256 public userCount;
+    uint256 public constant MAX_USERS = 1000;
+    
+    event UserRegistered(address indexed user, string name);
+    event UserUpdated(address indexed user);
+    event Deposit(address indexed user, uint256 amount);
+    
+    function register(string memory name, string memory email) public {
+        require(!users[msg.sender].exists, "Already registered");
+        require(userCount < MAX_USERS, "Max users reached");
+        require(bytes(name).length > 0, "Name required");
+        require(bytes(email).length > 0, "Email required");
+        
+        users[msg.sender] = User({
+            name: name,
+            email: email,
+            balance: 0,
+            registeredAt: block.timestamp,
+            exists: true
+        });
+        
+        userAddresses.push(msg.sender);
+        userCount++;
+        
+        emit UserRegistered(msg.sender, name);
+    }
+    
+    function updateProfile(string memory name, string memory email) public {
+        require(users[msg.sender].exists, "Not registered");
+        
+        users[msg.sender].name = name;
+        users[msg.sender].email = email;
+        
+        emit UserUpdated(msg.sender);
+    }
+    
+    function deposit() public payable {
+        require(users[msg.sender].exists, "Not registered");
+        require(msg.value > 0, "Must send ETH");
+        
+        users[msg.sender].balance += msg.value;
+        
+        emit Deposit(msg.sender, msg.value);
+    }
+    
+    function getUserInfo(address user) public view returns (User memory) {
+        require(users[user].exists, "User not found");
+        return users[user];
+    }
+    
+    function getAllUsers() public view returns (address[] memory) {
+        return userAddresses;
+    }
+    
+    function getUsersByRange(
+        uint256 start,
+        uint256 end
+    ) public view returns (address[] memory) {
+        require(start < end, "Invalid range");
+        require(end <= userAddresses.length, "End out of bounds");
+        
+        uint256 length = end - start;
+        address[] memory result = new address[](length);
+        
+        for(uint256 i = 0; i < length; i++) {
+            result[i] = userAddresses[start + i];
+        }
+        
+        return result;
+    }
+    
+    function isRegistered(address user) public view returns (bool) {
+        return users[user].exists;
+    }
+}
+```
+##练习2：投票系统
+需求：
+
+创建一个提案投票系统：
+
+1. 定义Proposal结构体（包含voters的mapping）
+2. 支持创建提案
+3. 支持投票（每人只能投一次）
+4. 查询提案信息
+5. 获取获胜提案
+
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract VotingSystem {
+    struct Proposal {
+        string description;
+        uint256 voteCount;
+        uint256 deadline;
+        bool executed;
+        mapping(address => bool) voters;
+    }
+    
+    mapping(uint256 => Proposal) public proposals;
+    uint256 public proposalCount;
+    
+    event ProposalCreated(uint256 indexed proposalId, string description);
+    event Voted(uint256 indexed proposalId, address indexed voter);
+    
+    function createProposal(
+        string memory description,
+        uint256 duration
+    ) public returns (uint256) {
+        require(bytes(description).length > 0, "Description required");
+        require(duration > 0, "Duration must be positive");
+        
+        uint256 proposalId = proposalCount++;
+        
+        Proposal storage p = proposals[proposalId];
+        p.description = description;
+        p.voteCount = 0;
+        p.deadline = block.timestamp + duration;
+        p.executed = false;
+        
+        emit ProposalCreated(proposalId, description);
+        
+        return proposalId;
+    }
+    
+    function vote(uint256 proposalId) public {
+        require(proposalId < proposalCount, "Proposal does not exist");
+        
+        Proposal storage p = proposals[proposalId];
+        
+        require(block.timestamp < p.deadline, "Voting has ended");
+        require(!p.voters[msg.sender], "Already voted");
+        
+        p.voters[msg.sender] = true;
+        p.voteCount++;
+        
+        emit Voted(proposalId, msg.sender);
+    }
+    
+    function hasVoted(
+        uint256 proposalId,
+        address voter
+    ) public view returns (bool) {
+        require(proposalId < proposalCount, "Proposal does not exist");
+        return proposals[proposalId].voters[voter];
+    }
+    
+    function getProposalInfo(uint256 proposalId) public view returns (
+        string memory description,
+        uint256 voteCount,
+        uint256 deadline,
+        bool executed
+    ) {
+        require(proposalId < proposalCount, "Proposal does not exist");
+        
+        Proposal storage p = proposals[proposalId];
+        return (p.description, p.voteCount, p.deadline, p.executed);
+    }
+    
+    function getWinningProposal() public view returns (uint256 winningProposalId) {
+        uint256 maxVotes = 0;
+        
+        for(uint256 i = 0; i < proposalCount; i++) {
+            if(proposals[i].voteCount > maxVotes) {
+                maxVotes = proposals[i].voteCount;
+                winningProposalId = i;
+            }
+        }
+        
+        return winningProposalId;
+    }
+}
+```
+
+## 练习3：NFT市场
+挑战任务：
+
+创建一个简单的NFT市场合约：
+
+1. 定义NFT结构体（id、owner、price、forSale）
+2. 铸造NFT功能
+3. 上架/下架功能
+4. 购买功能
+5. 查询所有在售NFT
+
+提示：
+
+* 使用ID自增模式
+* 使用mapping存储NFT
+* 使用array追踪在售列表
 
 
+# 9. 常见问题解答
+
+Q1：为什么mapping不能遍历？
+
+答：Mapping的底层实现决定了它不能遍历。
+
+技术原因：
+
+1. 不存储键列表：Mapping只存储值，不存储键
+2. 哈希存储：通过哈希函数计算存储位置
+3. 无限键空间：理论上所有可能的键都"存在"
+4. Gas成本：如果要遍历，成本无法预估
+
+解决方案：使用Mapping+Array组合模式
 
 
+Q2：如何实现可遍历的mapping？
 
+答：使用Mapping+Array组合模式。
+```sol
+mapping(address => uint256) public data;  // 存储数据
+address[] public keys;                    // 存储键列表
+mapping(address => bool) public exists;   // 快速检查
 
+function add(address key, uint256 value) public {
+    if(!exists[key]) {
+        keys.push(key);
+        exists[key] = true;
+    }
+    data[key] = value;
+}
 
+function iterate() public view returns (uint256[] memory) {
+    uint256[] memory values = new uint256[](keys.length);
+    for(uint256 i = 0; i < keys.length; i++) {
+        values[i] = data[keys[i]];
+    }
+    return values;
+}
+```
 
+# 10. 知识点总结
 
+Mapping特性总结
 
+核心特性：
 
+* 键值对存储结构
+* O(1)时间复杂度
+* 基于哈希表实现
+* 只能用于storage
 
+五大特性：
 
+* 所有键都"存在"（返回默认值）
+* 不存储键列表
+* 不能遍历
+* 只能用于storage
+* 不能作为参数/返回值
 
+操作支持：
 
+* 支持：赋值、查询、delete单个值
+* 不支持：遍历、获取长度、delete整个mapping
 
+**Struct特性总结**
+定义和使用：
 
+* 自定义复合数据类型
+* 组织相关数据
+* 提高代码可读性
+
+三种创建方式：
+
+* 逐个赋值（灵活）
+* 构造器语法（简洁）
+* 键值对语法（推荐）
+
+存储位置：
+
+* Storage：永久存储
+* Memory：临时存储
+* Calldata：只读参数
+
+特殊限制：
+
+* 包含mapping的struct只能在storage
+* 不能作为参数和返回值（如果包含mapping）
+
+组合模式总结
+
+Mapping + Struct：
+
+* 快速查找复杂数据
+* 代码清晰
+* 添加exists字段标记存在
+
+Mapping + Array：
+
+* 实现可遍历的mapping
+* O(1)查找 + 遍历能力
+* 需要维护一致性
+
+Mapping + Struct + Array：
+
+* 最完整的模式
+* 快速查找 + 复杂数据 + 遍历
+* 几乎所有项目都使用
+
+关键设计原则：
+
+* 使用struct组织数据
+* 使用mapping快速查找
+* 使用array实现遍历
+* 添加exists标记
+* 添加计数器
 
 
 
