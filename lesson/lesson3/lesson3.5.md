@@ -640,8 +640,37 @@ contract PayableExample {
     }
 }
 ```
-
-
+**没有payable会发生什么：**
+```sol
+contract NoPayable {
+    // 没有payable修饰符
+    function normalFunction() public {
+        // 如果调用时发送ETH，交易会失败并回退
+    }
+    
+    // 错误：尝试访问msg.value但没有payable
+    function badFunction() public {
+        // uint256 amount = msg.value;  // 编译错误！
+    }
+}
+```
+**msg.value的使用**
+```sol
+contract MsgValueExample {
+    event Received(address sender, uint256 amount);
+    function checkValue() public payable {
+        if(msg.value > 1 ether) {
+            emit Received(msg.sender, msg.value);
+        } else {
+            revert("Must send at least 1 ETH");
+        }
+    }
+    function getExactAmount() public payable {
+        require(msg.value == 0.5 ether, "Must send exactly 0.5 ETH");
+        // 处理逻辑
+    }
+}
+```
 
 
 
