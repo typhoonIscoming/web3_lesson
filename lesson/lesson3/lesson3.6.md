@@ -154,8 +154,50 @@ contract ParameterValidation {
     }
 }
 ```
-
-
+**模式4：时间锁**
+```sol
+contract TimeLock {
+    uint256 public lockTime;
+    
+    modifier afterTime(uint256 _time) {
+        require(block.timestamp >= _time, "Too early");
+        _;
+    }
+    
+    modifier beforeTime(uint256 _time) {
+        require(block.timestamp < _time, "Too late");
+        _;
+    }
+    constructor() {
+        lockTime = block.timestamp + 1 days;
+    }
+    function executeAfterLock() public afterTime(lockTime) {
+        // 锁定期后才能执行
+    }
+    
+    function executeBeforeLock() public beforeTime(lockTime) {
+        // 锁定期前才能执行
+    }
+}
+```
+## 模式5：重入保护
+```sol
+contract ReentrancyGuard {
+    bool private locked = false;
+    
+    modifier noReentrant() {
+        require(!locked, "Reentrant call");
+        locked = true;
+        _;
+        locked = false;
+    }
+    
+    function withdraw(uint256 amount) public noReentrant {
+        // 防止重入攻击
+        // 提取资金逻辑
+    }
+}
+```
 
 
 
