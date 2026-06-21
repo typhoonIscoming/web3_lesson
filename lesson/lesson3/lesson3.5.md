@@ -454,6 +454,193 @@ contract ViewExample {
     }
 }
 ```
+**view函数可以做什么：**
+
+1. 读取状态变量
+2. 读取全局变量（msg、block、tx等）
+3. 调用其他view或pure函数
+4. 进行计算和逻辑判断
+
+**view函数不能做什么：**
+```sol
+contract ViewRestrictions {
+    uint256 public value;
+    function badView1() public view {
+        // value = 100;  // 错误：不能修改状态变量
+    }
+    function badView2() public view {
+        // selfdestruct(payable(msg.sender));  // 错误：不能销毁合约
+    }
+    function badView3() public view {
+        // emit SomeEvent();  // 错误：不能触发事件
+    }
+}
+```
+**Gas消耗：**
+```sol
+contract ViewGas {
+    uint256 public value = 100;
+    // 外部直接调用view函数：不消耗gas
+    function getValue() public view returns (uint256) {
+        return value;
+    }
+    // 但在交易中调用view函数：消耗gas
+    function modifyAndView() public returns (uint256) {
+        value = 200;  // 修改状态，消耗gas
+        return getValue();  // 内部调用view，也消耗gas
+    }
+}
+```
+**重要提示：**
+
+* 外部直接调用view函数（只读查询）：不消耗gas
+* 在交易中调用view函数：消耗gas
+* view承诺不修改状态，但编译器会检查
+
+## 3.3 Pure - 纯函数
+pure函数既不读取也不修改状态，只使用参数和局部变量
+```sol
+contract PureExample {
+    // pure函数：只使用参数
+    function add(uint256 a, uint256 b) public pure returns (uint256) {
+        return a + b;
+    }
+    
+    // pure函数：数学计算
+    function calculate(uint256 x) public pure returns (uint256) {
+        uint256 result = x * x + 2 * x + 1;
+        return result;
+    }
+    
+    // pure函数：字符串处理
+    function concatenate(string memory a, string memory b) 
+        public pure returns (string memory) 
+    {
+        return string(abi.encodePacked(a, b));
+    }
+    // pure函数：可以调用其他pure函数
+    function complexPure(uint256 a, uint256 b) 
+        public pure returns (uint256) 
+    {
+        uint256 sum = add(a, b);
+        return sum * 2;
+    }
+    // pure函数：数组处理
+    function arraySum(uint256[] memory arr) 
+        public pure returns (uint256) 
+    {
+        uint256 sum = 0;
+        for(uint256 i = 0; i < arr.length; i++) {
+            sum += arr[i];
+        }
+        return sum;
+    }
+}
+```
+**pure函数可以做什么：**
+
+1. 使用函数参数
+2. 使用局部变量
+3. 调用其他pure函数
+4. 进行纯计算
+
+**pure函数不能做什么：**
+```sol
+contract PureRestrictions {
+    uint256 public value = 100;
+    function badPure1() public pure returns (uint256) {
+        // return value;  // 错误：不能读取状态变量
+    }
+    function badPure2() public pure returns (uint256) {
+        // return block.timestamp;  // 错误：不能读取全局变量
+    }
+    function badPure3() public pure returns (address) {
+        // return msg.sender;  // 错误：不能读取msg
+    }
+    function badPure4() public pure returns (uint256) {
+        // return address(this).balance;  // 错误：不能读取余额
+    }
+}
+```
+**pure函数的类比：**
+pure函数就像数学函数：
+```sol
+f(x) = x + 1
+```
+* 输入确定，输出确定
+* 没有副作用
+* 不依赖外部状态
+**使用场景**
+```sol
+contract PureUseCases {
+    // 工具函数
+    function min(uint256 a, uint256 b) public pure returns (uint256) {
+        return a < b ? a : b;
+    }
+    
+    function max(uint256 a, uint256 b) public pure returns (uint256) {
+        return a > b ? a : b;
+    }
+    
+    // 验证函数
+    function isValidAddress(address addr) public pure returns (bool) {
+        return addr != address(0);
+    }
+    
+    // 计算函数
+    function calculateFee(uint256 amount, uint256 feePercent) 
+        public pure returns (uint256) 
+    {
+        return amount * feePercent / 100;
+    }
+}
+```
+## 3.4 Payable - 可支付函数
+**payable函数可以接收ETH。**
+```sol
+contract PayableExample {
+    uint256 public totalReceived;
+    mapping(address => uint256) public balances;
+    
+    // payable函数：可以接收ETH
+    function deposit() public payable {
+        require(msg.value > 0, "Must send ETH");
+        balances[msg.sender] += msg.value;
+        totalReceived += msg.value;
+    }
+    
+    // payable函数：带参数
+    function depositWithMessage(string memory message) public payable {
+        require(msg.value > 0, "Must send ETH");
+        balances[msg.sender] += msg.value;
+        // 可以使用message参数
+    }
+    
+    // 查询合约余额
+    function getContractBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+    
+    // 提取ETH
+    function withdraw(uint256 amount) public {
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        balances[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
+    
+    // 接收ETH的特殊函数
+    receive() external payable {
+        // 直接转账ETH到合约时调用
+        balances[msg.sender] += msg.value;
+    }
+    
+    fallback() external payable {
+        // 调用不存在的函数时调用
+        balances[msg.sender] += msg.value;
+    }
+}
+```
+
 
 
 
