@@ -216,26 +216,466 @@ contract ElseIfChain {
 ```sol
 条件 ? 值1 : 值2
 ```
+```sol
+contract TernaryOperator {
+    // 使用if-else
+    function maxWithIf(uint a, uint b) 
+        public pure returns (uint) 
+    {
+        if (a > b) {
+            return a;
+        } else {
+            return b;
+        }
+    }
+    
+    // 使用三元运算符（推荐）
+    function maxWithTernary(uint a, uint b) 
+        public pure returns (uint) 
+    {
+        return a > b ? a : b;
+    }
+    
+    // 更多示例
+    function getStatus(bool isActive) 
+        public pure returns (string memory) 
+    {
+        return isActive ? "Active" : "Inactive";
+    }
+    
+    // 嵌套三元运算符（不推荐，难以阅读）
+    function complexTernary(uint value) 
+        public pure returns (string memory) 
+    {
+        return value > 100 ? "High" : 
+               value > 50 ? "Medium" : "Low";
+        // 可读性差，建议用if-else if
+    }
+}
+```
+**使用建议：**
 
+适合使用：
 
+1. 简单的条件赋值
+2. 返回值选择
+3. 单行逻辑
 
+不适合使用：
 
+1. 复杂逻辑
+2. 多层嵌套
+3. 需要执行多条语句
 
+# 3. 循环语句
 
+## 3.1 for循环
+for循环是最常用的循环语句，适合已知循环次数的场景。
+```sol
+contract ForLoop {
+    // 基本for循环
+    function sum(uint n) public pure returns (uint) {
+        uint total = 0;
+        for (uint i = 0; i <= n; i++) {
+            total += i;
+        }
+        return total;
+    }
+    
+    // 数组遍历
+    function sumArray(uint[] memory arr) 
+        public pure returns (uint) 
+    {
+        uint total = 0;
+        for (uint i = 0; i < arr.length; i++) {
+            total += arr[i];
+        }
+        return total;
+    }
+    
+    // 倒序循环
+    function countdown(uint n) 
+        public pure returns (uint[] memory) 
+    {
+        uint[] memory result = new uint[](n);
+        for (uint i = n; i > 0; i--) {
+            result[n - i] = i;
+        }
+        return result;
+    }
+    
+    // 步长为2的循环
+    function sumEven(uint n) public pure returns (uint) {
+        uint total = 0;
+        for (uint i = 0; i <= n; i += 2) {
+            total += i;
+        }
+        return total;
+    }
+}
+```
+## 3.2 while循环
+while循环先判断条件，再执行循环体，适合循环次数不确定的场景。
+```sol
+contract WhileLoop {
+    // 基本while循环
+    function countdown(uint start) 
+        public pure returns (uint) 
+    {
+        uint count = start;
+        while (count > 0) {
+            count--;
+        }
+        return count;
+    }
+    
+    // 查找第一个非零值
+    function findNonZero(uint[] memory arr) 
+        public pure returns (uint) 
+    {
+        uint i = 0;
+        while (i < arr.length && arr[i] == 0) {
+            i++;
+        }
+        return i;  // 返回第一个非零值的索引
+    }
+    
+    // 计算2的幂次
+    function powerOfTwo(uint target) 
+        public pure returns (uint) 
+    {
+        uint result = 1;
+        while (result < target) {
+            result *= 2;
+        }
+        return result;
+    }
+}
+```
+**while循环特点：**
 
+* 先判断条件，再执行
+* 最少执行0次（条件初始就为false）
+* 适合条件驱动的循环
 
+## 3.3 do-while循环
+do-while循环先执行循环体，再判断条件，保证至少执行一次。
+```sol
+contract DoWhileLoop {
+    // 基本do-while
+    function doWhileDemo(uint n) 
+        public pure returns (uint) 
+    {
+        uint i = 0;
+        uint result = 0;
+        do {
+            result += i;
+            i++;
+        } while (i < n);
+        return result;
+    }
+    
+    // 至少执行一次的场景
+    function validateInput(uint value) 
+        public pure returns (bool) 
+    {
+        uint attempts = 0;
+        bool valid = false;
+        
+        do {
+            attempts++;
+            valid = (value > 0);
+            value = value / 10;
+        } while (value > 0 && attempts < 10);
+        
+        return valid;
+    }
+}
+```
+**do-while特点：**
 
+* 先执行，再判断
+* 至少执行1次
+* 使用较少，适合特殊场景
 
+## 3.4 三种循环的对比
+|特性|for|while|do-while|
+|:--:|:--:|:--:|:--:|
+|语法复杂度|复杂|简单|简单|
+|循环次数|已知|未知|未知|
+|最少执行|0次|0次|1次|
+|适用场景|计数循环|条件循环|至少执行一次|
+|使用频率|最高|中等|较低|
 
+**选择建议：**
 
+1. 优先选择for循环
+    + 循环次数明确
+    + 代码结构清晰
+    + 不易出错
 
+2. 其次考虑while
+    + 条件驱动
+    + 灵活性高
 
+3. 谨慎使用do-while
+    + 特殊场景（至少执行一次）
+    + 使用较少
 
+## 3.5 break和continue
+**break：立即退出循环**
+```sol
+contract BreakStatement {
+    // 查找目标值
+    function findTarget(uint[] memory arr, uint target) 
+        public pure returns (bool, uint) 
+    {
+        for (uint i = 0; i < arr.length; i++) {
+            if (arr[i] == target) {
+                return (true, i);  // 找到就退出
+            }
+        }
+        return (false, 0);
+    }
+    // 查找第一个满足条件的元素
+    function findFirstGreaterThan(uint[] memory arr, uint threshold) 
+        public pure returns (uint) 
+    {
+        for (uint i = 0; i < arr.length; i++) {
+            if (arr[i] > threshold) {
+                return i;  // 找到就退出
+            }
+        }
+        revert("Not found");
+    }
+}
+```
+**continue：跳过本次循环，继续下一次**
+```sol
+contract ContinueStatement {
+    // 只累加偶数
+    function sumEven(uint n) 
+        public pure returns (uint) 
+    {
+        uint total = 0;
+        for (uint i = 0; i <= n; i++) {
+            if (i % 2 != 0) {
+                continue;  // 跳过奇数
+            }
+            total += i;
+        }
+        return total;
+    }
+    
+    // 跳过零值
+    function sumNonZero(uint[] memory arr) 
+        public pure returns (uint) 
+    {
+        uint total = 0;
+        for (uint i = 0; i < arr.length; i++) {
+            if (arr[i] == 0) {
+                continue;  // 跳过0
+            }
+            total += arr[i];
+        }
+        return total;
+    }
+    // 过滤无效地址
+    function countValidAddresses(address[] memory addresses) 
+        public pure returns (uint) 
+    {
+        uint count = 0;
+        for (uint i = 0; i < addresses.length; i++) {
+            if (addresses[i] == address(0)) {
+                continue;  // 跳过零地址
+            }
+            count++;
+        }
+        return count;
+    }
+}
+```
+**break vs continue：**
+|关键字|作用|效果|使用场景|
+|:--:|:--:|:--:|:--:|
+|break|退出循环|终止整个循环|找到目标值|
+|continue|跳过本次|继续下次循环|过滤特定值|
 
+# 4. 循环的Gas成本
+**循环是Solidity开发中最危险的操作之一，因为Gas成本会随循环次数线性或指数增长。**
 
+危险示例：
+```sol
+contract DangerousLoop {
+    uint[] public data;
+    // 危险：无限制的循环
+    function sumAll() public view returns (uint) {
+        uint total = 0;
+        for (uint i = 0; i < data.length; i++) {
+            total += data[i];
+        }
+        return total;
+        // 如果data有10,000个元素，这个函数将无法执行！
+    }
+}
+```
+**Gas消耗分析：**
+|数组大小|循环次数|Gas消耗（估算）|结果|
+|:--:|:--:|:--:|:--:|
+|10|10|~5,000|成功|
+|100|100|~50,000|成功|
+|1,000|1,000|~500,000|可能失败|
+|10,000|10,000|~5,000,000|必定失败|
+**区块Gas限制：以太坊每个区块的Gas限制约为30,000,000，单个交易通常限制在10,000,000以内。**
 
+## 4.2 嵌套循环的危险
+嵌套循环的Gas消耗呈指数增长。
+```sol
+contract NestedLoopDanger {
+    // 危险：O(n²)复杂度
+    function multiplicationTable(uint n) 
+        public pure returns (uint[][] memory) 
+    {
+        uint[][] memory table = new uint[][](n);
+        
+        for (uint i = 0; i < n; i++) {        // 外循环
+            table[i] = new uint[](n);
+            for (uint j = 0; j < n; j++) {    // 内循环
+                table[i][j] = (i + 1) * (j + 1);
+            }
+        }
+        
+        return table;
+    }
+}
+```
+**Gas消耗对比：**
+|输入大小(n)|循环总次数|Gas消耗（估算）|状态|
+|:--:|:--:|:--:|:--:|
+|n=10|100|~50,000|安全|
+|n=50|2,500|~500,000|警告|
+|n=100|10,000|~2,000,000|危险|
+|n=200|40,000|~8,000,000|极危险|
 
+三大危害：
 
+1. Gas耗尽：交易失败，但已消耗的Gas不退还
+2. 资金锁定：如果提款函数有循环，用户可能无法提款
+3. DoS攻击：恶意用户可以故意让合约无法使用
+
+## 4.3 循环安全实践
+## 方案1：限制循环次数
+```sol
+contract SafeLoop {
+    uint public constant MAX_ARRAY_SIZE = 100;
+    // 限制输入大小
+    function safeSum(uint[] memory data) 
+        public pure returns (uint) 
+    {
+        require(data.length <= MAX_ARRAY_SIZE, "Array too large");
+        
+        uint total = 0;
+        for (uint i = 0; i < data.length; i++) {
+            total += data[i];
+        }
+        return total;
+    }
+}
+```
+## 方案2：使用mapping代替循环
+```sol
+contract UseMappingInstead {
+    // 不好：需要循环查找
+    address[] public users;
+    function getUserBalance(address user) public view returns (uint) {
+        // O(n) 复杂度，很慢
+        for (uint i = 0; i < users.length; i++) {
+            if (users[i] == user) {
+                return i;
+            }
+        }
+        return 0;
+    }
+    // 好：使用mapping，O(1)查询
+    mapping(address => uint) public balances;
+    
+    function getBalance(address user) public view returns (uint) {
+        return balances[user];  // 直接访问，快速
+    }
+}
+```
+## 方案3：分批处理
+```sol
+contract BatchProcessing {
+    uint[] public data;
+    uint public constant BATCH_SIZE = 50;
+    
+    // 分批处理大数组
+    function processBatch(uint startIndex, uint batchSize) 
+        public 
+    {
+        require(batchSize <= BATCH_SIZE, "Batch too large");
+        uint endIndex = startIndex + batchSize;
+        require(endIndex <= data.length, "Out of bounds");
+        
+        for (uint i = startIndex; i < endIndex; i++) {
+            // 每次处理50个，分多次交易完成
+            data[i] = data[i] * 2;
+        }
+    }
+}
+```
+## 方案4：链下计算，链上存储
+```sol
+contract OffchainCalculation {
+    mapping(address => uint) public rewards;
+    
+    // 前端计算好结果，合约只存储
+    function setRewards(
+        address[] calldata users,
+        uint[] calldata amounts
+    ) external {
+        require(users.length == amounts.length, "Length mismatch");
+        require(users.length <= 100, "Too many users");
+        
+        // 只是简单的赋值，不做复杂计算
+        for (uint i = 0; i < users.length; i++) {
+            rewards[users[i]] = amounts[i];
+        }
+    }
+}
+```
+
+## 4.4 Gas优化效果对比
+|方法|Gas消耗|适用场景|推荐度|
+|:--:|:--:|:--:|:--:|
+|无限制循环|极高|危险，避免|不推荐|
+|限制循环次数|中等|小数据集([<]100)	|推荐|
+|mapping查询|恒定(低)|单个查询|强烈推荐|
+|分批处理|分散|大数据集|推荐|
+|链下计算|几乎为0|复杂计算|强烈推荐|
+
+实际案例对比：
+
+处理1000个用户的积分：
+
+方案A：循环遍历
+```sol
+function updateAll() public {
+    for (uint i = 0; i < users.length; i++) {
+        scores[users[i]] += 10;
+    }
+}
+// Gas: ~2,000,000（可能失败）
+```
+方案B：mapping直接更新
+```sol
+function updateUser(address user) public {
+    scores[user] += 10;
+}
+// Gas: ~25,000（每次）
+// 用户自己调用，分散Gas成本
+```
 
 
 
