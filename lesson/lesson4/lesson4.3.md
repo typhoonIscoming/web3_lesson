@@ -607,29 +607,361 @@ contract CommonMistakes {
     }
 }
 ```
+## 3.4 block.timestamp - 时间戳
+基本定义：
 
+* 类型：uint
+* 单位：秒（Unix时间戳）
+* 含义：当前区块被打包的时间
 
+时间单位：
 
+Solidity提供了方便的时间单位：
+```sol
+1 seconds = 1
+1 minutes = 60 seconds = 60
+1 hours = 60 minutes = 3600
+1 days = 24 hours = 86400
+1 weeks = 7 days = 604800
+```
+注意：没有months和years，因为它们的长度不固定。
 
+**使用示例**
+```sol
+contract TimeExample {
+    uint public deadline;
+    uint public startTime;
+    
+    constructor(uint durationDays) {
+        startTime = block.timestamp;
+        deadline = block.timestamp + (durationDays * 1 days);
+    }
+    
+    // 检查是否过期
+    function isExpired() public view returns (bool) {
+        return block.timestamp > deadline;
+    }
+    
+    // 检查是否在有效期内
+    function isActive() public view returns (bool) {
+        return block.timestamp >= startTime && 
+               block.timestamp <= deadline;
+    }
+    
+    // 剩余时间
+    function timeRemaining() public view returns (uint) {
+        if (block.timestamp >= deadline) {
+            return 0;
+        }
+        return deadline - block.timestamp;
+    }
+    
+    // 已经过时间
+    function timePassed() public view returns (uint) {
+        return block.timestamp - startTime;
+    }
+}
+```
+**实战案例：时间锁**
+```sol
+contract TimeLock {
+    mapping(address => uint) public lockedUntil;
+    mapping(address => uint) public balances;
+    
+    // 存款并锁定
+    function deposit(uint lockDuration) public payable {
+        require(msg.value > 0, "Must deposit ETH");
+        require(
+            lockDuration >= 1 days && lockDuration <= 365 days,
+            "Duration must be 1-365 days"
+        );
+        
+        balances[msg.sender] += msg.value;
+        lockedUntil[msg.sender] = block.timestamp + lockDuration;
+    }
+    
+    // 提现
+    function withdraw() public {
+        require(balances[msg.sender] > 0, "No balance");
+        require(
+            block.timestamp >= lockedUntil[msg.sender],
+            "Still locked"
+        );
+        
+        uint amount = balances[msg.sender];
+        balances[msg.sender] = 0;
+        lockedUntil[msg.sender] = 0;
+        
+        (bool sent, ) = msg.sender.call{value: amount}("");
+        require(sent, "Transfer failed");
+    }
+    
+    // 查询剩余锁定时间
+    function timeRemaining() public view returns (uint) {
+        if (block.timestamp >= lockedUntil[msg.sender]) {
+            return 0;
+        }
+        return lockedUntil[msg.sender] - block.timestamp;
+    }
+}
+```
+**安全警告：**
+```sol
+矿工可以操纵block.timestamp约15秒范围
 
+适合使用：
+✅ 较长时间间隔（小时、天）
+✅ 时间锁
+✅ 截止日期
 
+不适合使用：
+❌ 关键随机性
+❌ 精确到秒的需求
+❌ 高频交易时间戳
+```
+## 3.5 block.number - 区块号
+基本定义：
 
+* 类型：uint
+* 含义：当前区块在链上的序号
+* 以太坊主网：平均12-14秒/块，每天约6400个块
 
+**使用示例**
+```sol
+contract BlockNumber {
+    uint public startBlock;
+    uint public endBlock;
+    
+    constructor(uint durationInBlocks) {
+        startBlock = block.number;
+        endBlock = block.number + durationInBlocks;
+    }
+    
+    // 检查是否在有效期内
+    function isActive() public view returns (bool) {
+        return block.number >= startBlock && 
+               block.number <= endBlock;
+    }
+    
+    // 剩余区块数
+    function blocksRemaining() public view returns (uint) {
+        if (block.number >= endBlock) {
+            return 0;
+        }
+        return endBlock - block.number;
+    }
+    
+    // 计算经过的区块数
+    function blocksPassed() public view returns (uint) {
+        return block.number - startBlock;
+    }
+}
+```
+**基于区块的奖励系统**
+```sol
+contract BlockRewards {
+    uint public constant BLOCKS_PER_DAY = 6400;
+    uint public constant REWARD_PER_BLOCK = 10;
+    
+    uint public lastRewardBlock;
+    mapping(address => uint) public stakes;
+    mapping(address => uint) public rewards;
+    
+    function stake() public payable {
+        require(msg.value > 0, "Must stake");
+        stakes[msg.sender] += msg.value;
+        lastRewardBlock = block.number;
+    }
+    
+    function claimRewards() public {
+        uint stakeAmount = stakes[msg.sender];
+        require(stakeAmount > 0, "No stake");
+        
+        uint blocksPassed = block.number - lastRewardBlock;
+        uint reward = blocksPassed * REWARD_PER_BLOCK;
+        
+        rewards[msg.sender] += reward;
+        lastRewardBlock = block.number;
+    }
+}
+```
+## 3.6 tx.origin - 危险，不要用！
 
+基本定义：
 
+* 类型：address
+* 含义：交易的原始发起者（必定是EOA，不可能是合约）
 
+msg.sender vs tx.origin：
+```sol
+调用链：用户 → 合约A → 合约B
 
+在合约B中：
+- msg.sender = 合约A（直接调用者）
+- tx.origin = 用户（交易发起者）
+```
+**危险案例：钓鱼攻击**
+```sol
+// 受害合约（有漏洞）
+contract Vulnerable {
+    address public owner;
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    // 危险：使用tx.origin检查权限
+    function transferOwnership(address newOwner) public {
+        require(tx.origin == owner, "Not owner");  // 漏洞！
+        owner = newOwner;
+    }
+}
 
+// 攻击合约
+contract Attack {
+    Vulnerable public victim;
+    address public attacker;
+    
+    constructor(address _victim) {
+        victim = Vulnerable(_victim);
+        attacker = msg.sender;
+    }
+    
+    function attack() public {
+        // 转移所有权到攻击者
+        victim.transferOwnership(attacker);
+    }
+}
 
+// 攻击流程：
+// 1. 攻击者诱导owner访问恶意网站
+// 2. owner点击按钮，调用Attack.attack()
+// 3. Attack调用Vulnerable.transferOwnership()
+// 4. 在Vulnerable中，tx.origin是owner，检查通过！
+// 5. owner被修改为attacker
+// 6. 合约被攻击者控制
+```
+**正确做法：**
+```sol
+contract Safe {
+    address public owner;
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    // 安全：使用msg.sender
+    function transferOwnership(address newOwner) public {
+        require(msg.sender == owner, "Not owner");  // 安全
+        owner = newOwner;
+    }
+}
+```
+**tx.origin的唯一合法用途：**
 
+**检查调用链中是否包含EOA（很少使用）**
+```sol
+function isOriginEOA() public view returns (bool) {
+    return tx.origin == msg.sender;
+    // true：直接由EOA调用
+    // false：通过合约调用
+}
+```
+安全原则：
 
+永远不要使用tx.origin进行权限验证！
 
+## 3.7 其他全局变量
 
+**gasleft() - 剩余gas**
+```sol
+contract GasTracking {
+    function expensiveOperation() public view returns (uint gasUsed) {
+        uint gasBefore = gasleft();
+        
+        // 执行操作
+        uint sum = 0;
+        for (uint i = 0; i < 100; i++) {
+            sum += i;
+        }
+        
+        gasUsed = gasBefore - gasleft();
+        return gasUsed;
+    }
+    
+    function checkSufficientGas() public view {
+        require(gasleft() >= 10000, "Insufficient gas");
+        // 继续执行
+    }
+}
+```
+## keccak256() - 哈希函数
+```sol
+contract HashExample {
+    // 生成唯一ID
+    function generateId(address user, uint nonce) 
+        public pure returns (bytes32) 
+    {
+        return keccak256(abi.encodePacked(user, nonce));
+    }
+    
+    // 验证密码
+    bytes32 public passwordHash;
+    
+    function setPassword(string memory password) public {
+        passwordHash = keccak256(bytes(password));
+    }
+    
+    function checkPassword(string memory password) 
+        public view returns (bool) 
+    {
+        return keccak256(bytes(password)) == passwordHash;
+    }
+    
+    // 生成随机数（不够安全，仅示例）
+    function randomNumber() public view returns (uint) {
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                block.timestamp,
+                block.difficulty,
+                msg.sender
+            )
+        );
+        return uint(hash);
+    }
+}
+```
+## blockhash() - 区块哈希
+```sol
+contract BlockHashExample {
+    // 获取最近区块的哈希
+    function getRecentBlockHash(uint blockNumber) 
+        public view returns (bytes32) 
+    {
+        require(
+            blockNumber < block.number,
+            "Block not yet mined"
+        );
+        require(
+            block.number - blockNumber <= 256,
+            "Block too old"
+        );
+        
+        return blockhash(blockNumber);
+    }
+    
+    // 简单随机数（不够安全）
+    function simpleRandom() public view returns (uint) {
+        bytes32 hash = blockhash(block.number - 1);
+        return uint(hash) % 100;  // 0-99的随机数
+    }
+}
+```
+**限制：**
 
-
-
-
-
+* 只能获取最近256个块的哈希
+* 更早的块返回bytes32(0)
+* 不要用于重要的随机性（推荐Chainlink VRF）
 
 
 
