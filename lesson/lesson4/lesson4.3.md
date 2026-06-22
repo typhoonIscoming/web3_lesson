@@ -347,31 +347,266 @@ contract RecommendedPattern {
 }
 ```
 
+## 2.5 转账安全最佳实践
 
+***CEI模式（Checks-Effects-Interactions）***
 
+***这是智能合约安全的黄金法则！***
+```sol
+function withdraw(uint amount) public {
+    // 1. Checks - 检查所有条件
+    require(balances[msg.sender] >= amount, "Insufficient balance");
+    require(amount > 0, "Amount must be positive");
+    
+    // 2. Effects - 更新状态变量
+    balances[msg.sender] -= amount;
+    
+    // 3. Interactions - 调用外部合约/转账
+    (bool success, ) = msg.sender.call{value: amount}("");
+    require(success, "Transfer failed");
+}
+```
+**危险示例（重入攻击）：**
+```sol
+contract Vulnerable {
+    mapping(address => uint) public balances;
+    // 危险：先转账后更新
+    function badWithdraw() public {
+        uint amount = balances[msg.sender];
+        // Interactions（外部调用在前）
+        (bool sent, ) = msg.sender.call{value: amount}("");
+        require(sent, "Failed");
+        
+        // Effects（状态更新在后）- 太晚了！
+        balances[msg.sender] = 0;
+        // 攻击者可以在收到钱后再次调用withdraw
+    }
+}
+```
+**攻击过程：**
+```sol
+1. 攻击者调用withdraw
+2. 合约向攻击者转账
+3. 攻击者合约的fallback被触发
+4. 在fallback中再次调用withdraw
+5. 因为余额还没清零，可以再次提取
+6. 重复步骤2-5，直到合约被掏空
+```
+**安全做法：**
+```sol
+contract Safe {
+    mapping(address => uint) public balances;
+    
+    // 安全：先更新后转账
+    function safeWithdraw() public {
+        uint amount = balances[msg.sender];
+        require(amount > 0, "No balance");
+        
+        // Effects（先更新状态）
+        balances[msg.sender] = 0;
+        
+        // Interactions（后转账）
+        (bool sent, ) = msg.sender.call{value: amount}("");
+        require(sent, "Transfer failed");
+    }
+}
+```
+**其他安全措施：**
+```sol
+// 1. 使用ReentrancyGuard
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
+contract SecureContract is ReentrancyGuard {
+    function withdraw() public nonReentrant {
+        // 自动防重入
+    }
+}
 
+// 2. 零地址检查
+function sendEther(address payable to, uint amount) public {
+    require(to != address(0), "Cannot send to zero address");
+    to.transfer(amount);
+}
 
+// 3. 余额检查
+function sendEther(address payable to, uint amount) public {
+    require(address(this).balance >= amount, "Insufficient contract balance");
+    to.transfer(amount);
+}
+```
 
+# 3. 全局变量详解
+## 3.1 全局变量概览
+全局变量是Solidity内置的特殊变量，提供区块链、交易、调用的信息。
 
+三大类别：
 
+msg对象 - 消息/调用信息：
 
+* msg.sender：调用者地址（最常用）
+* msg.value：发送的ETH数量（最常用）
+* msg.data：完整调用数据
+* msg.sig：函数选择器
 
+block对象 - 区块信息：
 
+* block.timestamp：当前区块时间戳（常用）
+* block.number：当前区块号（常用）
+* block.gaslimit：区块gas限制
+* block.coinbase：矿工/验证者地址
+* blockhash(n)：获取区块哈希
 
+tx对象 - 交易信息：
 
+* tx.origin：交易发起者（危险，不要用于权限检查）
+* tx.gasprice：交易gas价格
 
+其他重要函数：
 
+* gasleft()：剩余gas
+* keccak256()：哈希函数
+* abi.encode()：编码函数
 
+## 3.2 msg.sender - 调用者地址
+msg.sender是最重要的全局变量，几乎每个合约都会用到。
 
+**基本定义：**
 
+* 类型：address
+* 含义：当前函数的直接调用者
+* 可以是：外部账户（EOA）或合约地址
 
+**核心用途：权限控制**
+```sol
+contract Ownable {
+    address public owner;
+    
+    constructor() {
+        owner = msg.sender;  // 部署者成为owner
+    }
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not the owner");
+        _;
+    }
+    
+    function sensitiveOperation() public onlyOwner {
+        // 只有owner可以执行
+    }
+}
+```
+**其他用途：**
+```sol
+contract MsgSenderUses {
+    mapping(address => uint) public balances;
+    mapping(address => bool) public registered;
+    
+    // 记录操作者
+    function deposit() public payable {
+        balances[msg.sender] += msg.value;
+    }
+    
+    // 身份验证
+    function register() public {
+        require(!registered[msg.sender], "Already registered");
+        registered[msg.sender] = true;
+    }
+    
+    // 转账发送方
+    function transfer(address to, uint amount) public {
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+}
+```
+**重要理解：调用链中的msg.sender**
+```sol
+contract A {
+    function callB(address b) public {
+        B(b).someFunction();
+    }
+}
 
+contract B {
+    function someFunction() public view returns (address) {
+        return msg.sender;  // 返回合约A的地址，不是用户地址
+    }
+}
+```
+调用链：用户 → 合约A → 合约B
 
+在合约B中：
 
+* msg.sender = 合约A的地址（直接调用者）
+* 不是用户地址
 
+## 3.3 msg.value - 发送的ETH数量
+基本定义：
 
+* 类型：uint（单位：wei）
+* 含义：随调用发送的以太币数量
+* 只在payable函数中有意义
 
+```sol
+contract PaymentContract {
+    uint public totalReceived;
+    mapping(address => uint) public contributions;
+    
+    // 接收支付
+    function contribute() public payable {
+        require(msg.value > 0, "Must send ETH");
+        
+        contributions[msg.sender] += msg.value;
+        totalReceived += msg.value;
+    }
+    
+    // 精确金额要求
+    function buyItem() public payable {
+        require(msg.value == 0.1 ether, "Must send exactly 0.1 ETH");
+        // 购买逻辑
+    }
+    
+    // 最小金额要求
+    function invest() public payable {
+        require(msg.value >= 1 ether, "Minimum 1 ETH");
+        // 投资逻辑
+    }
+    
+    // 范围检查
+    function donate() public payable {
+        require(msg.value >= 0.01 ether, "Too low");
+        require(msg.value <= 10 ether, "Too high");
+        // 捐款逻辑
+    }
+}
+```
+**重要提示：**
+
+1. 单位是wei：1 ether = 10^18 wei
+2. 只有payable函数可接收：非payable函数msg.value必须为0
+3. 自动增加余额：msg.value会自动加到合约余额
+
+**常见错误：**
+```sol
+contract CommonMistakes {
+    // 错误1：非payable函数尝试接收ETH
+    // function deposit() public {
+    //     // 如果调用时发送ETH，交易会失败
+    // }
+    
+    // 错误2：在非payable函数中访问msg.value
+    // function getValue() public view returns (uint) {
+    //     return msg.value;  // 编译错误！
+    // }
+    
+    // 正确：payable函数
+    function correctDeposit() public payable {
+        // 可以接收ETH
+        // 可以访问msg.value
+    }
+}
+```
 
 
 
