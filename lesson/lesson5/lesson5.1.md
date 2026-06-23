@@ -553,10 +553,52 @@ mapping(address => uint256) public balanceOf;
 mapping(address => mapping(address => uint256)) public allowance;
 ```
 
+这是一个嵌套的mapping，存储授权关系：
 
+* 第一层键：授权人地址
+* 第二层键：被授权人地址
+* 值：授权数量
 
+理解方式：allowance[Alice][Uniswap]表示"Alice授权给Uniswap的数量"
 
+## 4.3 构造函数实现
+构造函数在合约部署时执行一次，用于初始化代币。
+```sol
+constructor(
+    string memory _name,
+    string memory _symbol,
+    uint8 _decimals,
+    uint256 _initialSupply
+) {
+    // 设置代币信息
+    name = _name;
+    symbol = _symbol;
+    decimals = _decimals;
+    
+    // 计算总供应量
+    totalSupply = _initialSupply * 10**_decimals;
+    
+    // 设置所有者
+    owner = msg.sender;
+    
+    // 将所有代币分配给部署者
+    balanceOf[msg.sender] = totalSupply;
+    
+    // 触发Transfer事件（从零地址到部署者）
+    emit Transfer(address(0), msg.sender, totalSupply);
+}
+```
+**总供应量计算：**
+```sol
+totalSupply = _initialSupply * 10**_decimals;
 
+// 例如：
+// _initialSupply = 1000
+// _decimals = 18
+// totalSupply = 1000 * 10^18 = 1000000000000000000000
+
+// 这表示1000个代币，但实际存储的是最小单位
+```
 
 
 
