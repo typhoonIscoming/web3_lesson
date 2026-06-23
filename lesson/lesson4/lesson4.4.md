@@ -666,9 +666,203 @@ contract AdvancedCrowdfunding {
 }
 ```
 
+# 7. 常见问题解答
+
+## Q1：为什么要区分address和address payable？
+答：为了类型安全。
+
+编译器可以检查：
+
+* 防止向普通address转账（会失败）
+* 明确哪些地址可以接收ETH
+* 减少运行时错误
 
 
+## Q2：transfer、send、call应该用哪个？
+答：2024年推荐使用call。
 
+```sol
+(bool sent, ) = recipient.call{value: amount}("");
+require(sent, "Failed");
+```
+理由：
+
+* transfer和send有2300 gas限制，可能不够用
+* call更灵活，可以转发所有gas
+* 配合ReentrancyGuard使用很安全
+
+避免：
+
+send：容易忘记检查返回值
+
+## Q3：tx.origin为什么危险？
+答：容易受到钓鱼攻击。
+
+危险场景：
+```sol
+用户 → 恶意合约 → 你的合约
+
+在你的合约中：
+tx.origin = 用户（通过检查！）
+msg.sender = 恶意合约
+
+如果用tx.origin检查权限，攻击者可以代表用户操作
+```
+安全原则：永远使用msg.sender做权限检查！
+
+## Q4：block.timestamp可以用于随机数吗？
+答：不能用于重要的随机性。
+
+问题：
+
+* 矿工可以操纵时间戳约15秒
+* 可预测性
+* 不够随机
+
+适合用途：
+
+* 时间锁（小时、天级别）
+* 截止日期
+* 时间间隔检查
+
+真正的随机数方案：
+
+* Chainlink VRF
+* 提交-揭示方案
+* 预言机
+
+## Q5：constant和immutable的区别？
+
+答：赋值时机不同。
+
+constant：
+
+* 编译时赋值
+* 必须是常量表达式
+* 访问cost = 0
+
+immutable：
+
+* 构造函数中赋值
+* 可以用运行时值
+* 访问cost ≈ 200 gas
+
+选择建议：
+
+* 纯常量用constant
+* 部署时确定的值用immutable
+* 运行时可变的用storage
+
+## Q6：枚举的底层类型是什么？
+答：uint8
+```sol
+enum Status { A, B, C }  // 实际上是uint8
+
+Status s = Status.B;
+uint value = uint(s);  // 1
+```
+特点：
+
+* 从0开始编号
+* 最多256个值（uint8的范围）
+* 存储消耗很小
+
+## Q7：如何选择使用枚举还是uint？
+答：根据语义和安全性需求。
+
+使用枚举：
+
+* 有限的状态集合
+* 需要类型安全
+* 提高可读性
+* 防止无效值
+
+使用uint：
+
+* 数值有意义
+* 需要数学运算
+* 范围不固定
+
+
+# 8. 知识点总结
+
+address类型
+
+两种类型：
+
+* address：基础类型，不能接收ETH
+* address payable：可以接收ETH，有transfer/send方法
+
+属性和方法：
+
+* .balance：查询余额（wei）
+* .code：获取字节码
+* .codehash：代码哈希
+* .transfer()：转账（payable专用）
+* .send()：转账+返回值（payable专用）
+* .call()：底层调用
+
+类型转换：
+
+* payable(addr)：转为address payable
+* 自动转换：address payable → address
+
+**转账方式**
+|方法|特点|推荐度|
+|:--:|:--:|:--:|
+|transfer|自动回滚，2300 gas|中|
+|send|需检查返回值，2300 gas|低|
+|call|无限制，灵活|高|
+
+**安全原则：遵循CEI模式！**
+
+**全局变量**
+msg对象：
+
+* msg.sender：调用者（最常用）
+* msg.value：发送的ETH（payable函数）
+* msg.data：调用数据
+* msg.sig：函数选择器
+
+block对象：
+
+* block.timestamp：时间戳（常用）
+* block.number：区块号（常用）
+* blockhash()：区块哈希
+
+危险变量：
+
+tx.origin：永远不要用于权限检查！
+
+
+## 枚举类型
+
+优势：
+
+* 代码可读性高
+* 类型安全
+* 节省gas
+
+应用：
+
+* 状态机模式
+* 有限选项集合
+* 角色管理
+
+## constant和immutable
+constant：
+
+* 编译时常量
+* 访问cost = 0 gas
+* 用于固定值
+
+immutable：
+
+* 部署时常量
+* 访问cost ≈ 200 gas
+* 用于部署时确定的值
+
+优化效果：节省约84-95%的gas
 
 
 
