@@ -510,38 +510,473 @@ contract A is C, B { }  // B优先于C（B在右侧，更派生）
 
 如果B和C有同名函数，右侧的合约优先被调用
 ```
+## 3.3 实际应用：组合功能模块
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
 
+// 模块1：所有权管理
+contract Ownable {
+    address public owner;
+    
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not the owner");
+        _;
+    }
+    
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "Invalid address");
+        address oldOwner = owner;
+        owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
 
+// 模块2：暂停功能
+contract Pausable {
+    bool public paused;
+    
+    event Paused(address account);
+    event Unpaused(address account);
+    
+    modifier whenNotPaused() {
+        require(!paused, "Pausable: paused");
+        _;
+    }
+    
+    modifier whenPaused() {
+        require(paused, "Pausable: not paused");
+        _;
+    }
+    
+    function _pause() internal whenNotPaused {
+        paused = true;
+        emit Paused(msg.sender);
+    }
+    
+    function _unpause() internal whenPaused {
+        paused = false;
+        emit Unpaused(msg.sender);
+    }
+}
 
+// 组合合约：同时拥有两个功能
+contract MyToken is Ownable, Pausable {
+    mapping(address => uint256) public balanceOf;
+    
+    function transfer(address to, uint256 amount) 
+        public 
+        whenNotPaused  // 使用Pausable的修饰符
+        returns (bool) 
+    {
+        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+    
+    function pause() public onlyOwner {  // 使用Ownable的修饰符
+        _pause();  // 调用Pausable的内部函数
+    }
+    
+    function unpause() public onlyOwner {
+        _unpause();
+    }
+}
+```
+**模块化设计的优势：**
 
+1. 关注点分离：每个模块只负责一个功能
+2. 可组合性：像积木一样组合功能
+3. 可测试性：每个模块独立测试
+4. 可复用性：模块可以在多个项目中使用
 
+# 4. super关键字
+## 4.1 super的作用
+super关键字用于调用父合约的函数，即使子合约已经重写了该函数。
+**基本概念：**
+```sol
+contract Parent {
+    function greet() public virtual returns (string memory) {
+        return "Hello from Parent";
+    }
+}
 
+contract Child is Parent {
+    function greet() public override returns (string memory) {
+        // 调用父合约的greet()
+        string memory parentGreeting = super.greet();
+        return string.concat("Hello from Child, ", parentGreeting);
+    }
+}
+```
+**调用过程**
+```sol
+Child.greet()
+    ↓
+获取super.greet()的返回值："Hello from Parent"
+    ↓
+拼接："Hello from Child, Hello from Parent"
+    ↓
+返回最终结果
+```
 
+## 4.2 单继承中的super
+在单继承中，super指向唯一的父合约。
+```sol
+contract Counter {
+    uint256 public count;
+    
+    function increment() public virtual {
+        count += 1;
+    }
+}
 
+contract DoubleCounter is Counter {
+    function increment() public override {
+        // 先调用父合约的increment（+1）
+        super.increment();
+        // 再自己加一次（再+1）
+        count += 1;
+        // 最终效果：每次+2
+    }
+}
+```
+**使用场景：**
+**场景1：扩展父合约功能**
+```sol
+contract BaseToken {
+    mapping(address => uint256) public balanceOf;
+    
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+contract TokenWithFee is BaseToken {
+    uint256 public constant FEE = 10;  // 1%
+    address public feeCollector;
+    
+    constructor(address _feeCollector) {
+        feeCollector = _feeCollector;
+    }
+    
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        uint256 fee = amount * FEE / 1000;
+        uint256 amountAfterFee = amount - fee;
+        
+        // 收取手续费
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amountAfterFee;
+        balanceOf[feeCollector] += fee;
+        
+        return true;
+    }
+}
+```
+**场景2：添加检查逻辑**
+```sol
+contract BasicTransfer {
+    mapping(address => uint256) public balanceOf;
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+contract SafeTransfer is BasicTransfer {
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        // 添加额外检查
+        require(to != address(0), "Cannot transfer to zero address");
+        require(amount > 0, "Amount must be positive");
+        
+        // 调用父合约的transfer
+        return super.transfer(to, amount);
+    }
+}
+```
+## 4.3 多重继承中的super
+**在多重继承中，super不是指向单个父合约，而是按照继承顺序调用下一个合约。**
+**关键理解：**
+```sol
+contract A {
+    function foo() public virtual returns (string memory) {
+        return "A";
+    }
+}
 
+contract B is A {
+    function foo() public virtual override returns (string memory) {
+        return string.concat("B->", super.foo());
+    }
+}
 
+contract C is A {
+    function foo() public virtual override returns (string memory) {
+        return string.concat("C->", super.foo());
+    }
+}
 
+contract D is B, C {
+    function foo() public override(B, C) returns (string memory) {
+        return string.concat("D->", super.foo());
+    }
+}
+```
+**调用链分析：**
 
+1）、Solidity 从右到左处理继承列表。 2）、C 在继承列表中更靠右，所以在 D 之后首先出现。 3）、B 在 C 之后。 4）、A 是共同的基类，放在最后。
+```sol
+D.foo() 执行
+↓
+super.foo() → 指向 C（线性化顺序的下一个）
+↓
+C.foo() 执行
+↓
+C 中的 super.foo() → 指向 B（不是 A！）
+↓
+B.foo() 执行
+↓
+B 中的 super.foo() → 指向 A
+↓
+A.foo() 返回 "A"
+↓
+B.foo() 返回 "B->A"
+↓
+C.foo() 返回 "C->B->A"
+↓
+D.foo() 返回 "D->C->B->A"
+```
+**重要提示：** super 的含义：在多重继承中，super 不是指"直接父合约"，而是指C3 线性化顺序中的下一个合约。 
+在 D 的上下文中，C 虽然直接继承自 A，但 C 的 super 会指向 B 这是因为在整个继承链中，C 的下一个是 B，而不是直接跳到 A
 
+# 5. 构造函数继承
+## 5.1 构造函数执行顺序
+构造函数总是按照继承顺序执行，从父到子。
 
+执行规则：
 
+1. 父合约优先：所有父合约构造函数先执行
+2. 按继承顺序：从左到右
+3. 最后是子合约：子合约构造函数最后执行
 
+**示例：**
+```sol
+contract A {
+    uint256 public valueA;
+    
+    constructor() {
+        valueA = 1;
+        // 第1个执行
+    }
+}
 
+contract B {
+    uint256 public valueB;
+    
+    constructor() {
+        valueB = 2;
+        // 第2个执行
+    }
+}
 
+contract C is A, B {
+    uint256 public valueC;
+    
+    constructor() {
+        valueC = 3;
+        // 第3个执行
+    }
+}
+```
+**执行顺序：**
+```sol
+部署C合约
+    ↓
+1. A的构造函数执行（valueA = 1）
+    ↓
+2. B的构造函数执行（valueB = 2）
+    ↓
+3. C的构造函数执行（valueC = 3）
+    ↓
+完成
+```
+**验证执行顺序：**
+```sol
+contract A {
+    event Log(string message);
+    
+    constructor() {
+        emit Log("A constructor");
+    }
+}
 
+contract B {
+    event Log(string message);
+    
+    constructor() {
+        emit Log("B constructor");
+    }
+}
 
+contract C is A, B {
+    event Log(string message);
+    
+    constructor() {
+        emit Log("C constructor");
+    }
+}
 
+// 部署C后，查看事件日志：
+// 1. "A constructor"
+// 2. "B constructor"
+// 3. "C constructor"
+```
+## 5.2 构造函数参数传递
+当父合约的构造函数需要参数时，有两种传递方式。
 
+## 方式1：在继承声明时传递（固定值）
+```sol
+contract Parent {
+    uint256 public value;
+    
+    constructor(uint256 _value) {
+        value = _value;
+    }
+}
 
+// 在继承声明时传递固定值
+contract Child is Parent(100) {
+    constructor() {
+        // Parent构造函数接收100
+    }
+}
+```
+**特点：**
 
+* 适合固定值
+* 代码简洁
+* 不够灵活
 
+## 方式2：在子构造函数中传递（动态值）
+```sol
+contract Parent {
+    uint256 public value;
+    
+    constructor(uint256 _value) {
+        value = _value;
+    }
+}
 
+// 在子构造函数中传递动态值
+contract Child is Parent {
+    constructor(uint256 _value) Parent(_value) {
+        // 通过参数传递给Parent
+    }
+}
+```
+**特点：**
 
+* 更灵活
+* 可以传递动态值
+* 推荐使用
+```sol
+contract Base {
+    string public name;
+    uint256 public version;
+    
+    constructor(string memory _name, uint256 _version) {
+        name = _name;
+        version = _version;
+    }
+}
 
+contract Extended is Base {
+    address public creator;
+    
+    constructor(
+        string memory _name,
+        uint256 _version
+    ) Base(_name, _version) {
+        creator = msg.sender;
+    }
+}
+```
 
+## 5.3 多重继承的构造函数
+**多个父合约都需要参数时，必须全部初始化。**
+```sol
+contract A {
+    uint256 public valueA;
+    constructor(uint256 _a) {
+        valueA = _a;
+    }
+}
 
+contract B {
+    uint256 public valueB;
+    constructor(uint256 _b) {
+        valueB = _b;
+    }
+}
 
+contract C is A, B {
+    uint256 public valueC;
+    
+    // 方式1：混合传递
+    constructor(uint256 _a, uint256 _c) 
+        A(_a)        // 动态传递给A
+        B(200)       // 固定值传递给B
+    {
+        valueC = _c;
+    }
+    
+    // 方式2：全部动态传递（推荐）
+    constructor(uint256 _a, uint256 _b, uint256 _c) 
+        A(_a) 
+        B(_b) 
+    {
+        valueC = _c;
+    }
+}
+```
+**执行顺序保持不变：**
+```sol
+无论如何传递参数，执行顺序始终是：
+A() → B() → C()
+```
 
+# 6. 函数重写
+## 6.1 virtual和override关键字
+**函数重写（Function Overriding）允许子合约修改父合约函数的行为。**
+
+**基本规则：**
+
+* 父合约：函数必须标记为virtual
+* 子合约：重写函数必须标记为override
+* 两者必须配对：缺一不可
+
+```sol
+contract Parent {
+    // virtual：表示这个函数可以被重写
+    function getValue() public virtual returns (uint256) {
+        return 100;
+    }
+}
+contract Child is Parent {
+    // override：表示重写父合约的函数
+    function getValue() public override returns (uint256) {
+        return 200;  // 修改返回值
+    }
+}
+```
 
 
 
