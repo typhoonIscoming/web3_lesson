@@ -977,15 +977,73 @@ contract Child is Parent {
     }
 }
 ```
+**调用结果：**
+```sol
+Parent parent = new Parent();
+parent.getValue();  // 返回：100
 
+Child child = new Child();
+child.getValue();   // 返回：200（已重写）
+```
+## 6.2 函数签名必须匹配
 
+重写函数必须与父合约函数签名完全一致。
 
+**必须相同的部分：**
 
+* 函数名
+* 参数类型
+* 参数顺序
+* 返回类型
 
+**可以不同的部分：**
 
+* 可见性（可以更开放，不能更严格）
+* 状态修饰符（可以更严格，不能更宽松）
 
+```sol
+contract Parent {
+    function foo(uint256 a) public virtual returns (uint256) {
+        return a;
+    }
+}
 
+contract Child is Parent {
+    // 正确：签名完全相同
+    function foo(uint256 a) public override returns (uint256) {
+        return a * 2;
+    }
+    
+    // 错误：参数不同
+    // function foo(uint256 a, uint256 b) public override returns (uint256) {
+    //     return a + b;
+    // }
+    
+    // 错误：返回类型不同
+    // function foo(uint256 a) public override returns (string memory) {
+    //     return "hello";
+    // }
+}
+```
 
-
+**可见性规则：**
+```sol
+contract Parent {
+    function foo() internal virtual returns (uint256) {
+        return 1;
+    }
+}
+contract Child is Parent {
+    // 正确：internal → public（更开放）
+    function foo() public override returns (uint256) {
+        return 2;
+    }
+    
+    // 错误：internal → private（更严格）
+    // function foo() private override returns (uint256) {
+    //     return 2;
+    // }
+}
+```
 
 
