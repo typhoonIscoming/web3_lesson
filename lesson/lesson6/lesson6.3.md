@@ -386,8 +386,97 @@ uint result = MyMathLib.mul(temp, 2);
 ## 2.3 作用域规则
 using for声明的作用域决定了在哪些地方可以使用这种简化语法。Solidity提供了灵活的作用域控制，让你可以根据需要选择合适的范围。
 
+**作用域类型：**
 
+Solidity支持两种作用域：
 
+* 合约级别：最常用，作用于整个合约
+* 文件级别：Solidity 0.8.13+支持，作用于整个文件
+
+不支持函数级别的声明，因为那样会让作用域过于碎片化，反而降低可读性。
+
+## 合约级别声明（最常见）：
+这是最常见也是最实用的声明方式。在合约内部声明using for，它会对这个合约中的所有函数生效。
+```sol
+contract MyContract {
+    using MathLib for uint256;  // 对整个合约有效
+    
+    function func1(uint256 x) public pure returns (uint256) {
+        return x.add(10);  // 可以使用
+    }
+    
+    function func2(uint256 y) public pure returns (uint256) {
+        return y.mul(2);   // 可以使用
+    }
+}
+```
+**理解要点：**
+1. 在合约顶部声明一次，整个合约都能使用
+2. 不同的合约可以有不同的using for声明
+3. 这个声明不会影响其他合约
+4. 这是最常用、最推荐的方式
+
+## 文件级别声明（Solidity 0.8.13+）：
+从Solidity 0.8.13版本开始，支持在文件级别声明using for。这个特性让库的使用更加方便，特别是当一个文件中有多个合约时。
+
+**文件级别的优势：**
+
+* 一次声明，整个文件的所有合约都能使用
+* 减少重复代码
+* 统一文件内的使用方式
+* 更加简洁
+
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+library MathLib {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+}
+
+// 文件级别声明
+using MathLib for uint256;
+
+// 该文件中的所有合约都可以使用
+contract Contract1 {
+    function test() public pure returns (uint256) {
+        return uint256(10).add(20);
+    }
+}
+
+contract Contract2 {
+    function test() public pure returns (uint256) {
+        return uint256(5).add(15);
+    }
+}
+```
+可以看到，文件级别的声明在pragma语句之后、合约定义之前。这样，文件中的Contract1和Contract2都自动获得了使用MathLib的能力，不需要在每个合约中重复声明。
+
+**何时使用文件级别声明：**
+
+* 文件中有多个合约，都需要使用同一个库
+* 希望减少重复代码
+* Solidity版本 >= 0.8.13
+
+何时使用合约级别声明：
+
+* 不同合约需要使用不同的库
+* 希望明确每个合约的依赖
+* 兼容旧版本Solidity
+
+**函数级别声明（不支持）：**
+
+Solidity不支持在函数内部声明using for，这是有意的设计决定：
+```sol
+contract MyContract {
+    function test() public pure {
+        // 错误：不能在函数内部声明using for
+        // using MathLib for uint256;  // 编译错误
+    }
+}
+```
 
 
 
