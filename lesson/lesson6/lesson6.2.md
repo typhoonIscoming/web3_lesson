@@ -650,14 +650,95 @@ contract MyToken is ERC20, Ownable {
 * 可能因为代码复用反而更优化
 
 
+# 11. 知识点总结
+
+**继承基础**
+
+单继承
+```sol
+contract Child is Parent { }
+```
+多重继承：
+```sol
+contract Child is Parent1, Parent2 { }
+```
+**访问权限：**
+
+* public：子合约可访问
+* internal：子合约可访问
+* private：子合约不可访问
 
 
+## super关键字
+作用：
 
+* 调用父合约函数
+* 按继承链顺序调用
+* 不是指向直接父合约
 
+使用场景：
 
+* 扩展父合约功能
+* 调用链
+* 多重继承中的函数调用
 
+## 构造函数继承
+执行顺序：
 
+* 父合约优先
+* 从左到右
+* 最后是子合约
 
+**参数传递：**
+```sol
+// 方式1：固定值
+contract Child is Parent(100) { }
+
+// 方式2：动态值（推荐）
+contract Child is Parent {
+    constructor(uint v) Parent(v) { }
+}
+```
+
+## 函数重写
+关键字：
+
+* virtual：可以被重写
+* override：重写父合约函数
+
+规则：
+
+* 签名必须相同
+* 多重继承需明确指定：override(A, B)
+* 可见性可以更开放
+
+## 抽象合约
+特点：
+
+* abstract关键字
+* 可以有未实现函数
+* 不能部署
+* 可以有状态变量
+
+使用场景：
+
+* 定义基础框架
+* 部分实现
+* 强制子合约实现特定功能
+
+## 接口
+特点：
+
+* interface关键字
+* 所有函数external
+* 不能有实现
+* 不能有状态变量
+
+使用场景：
+
+* 标准规范（ERC20、ERC721）
+* 合约间交互
+* 纯接口定义
 
 
 
