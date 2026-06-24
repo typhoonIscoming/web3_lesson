@@ -477,14 +477,48 @@ contract MyContract {
     }
 }
 ```
+**为什么不支持函数级别？**
 
+* 作用域过于细碎：每个函数都声明会让代码混乱
+* 可读性下降：读者需要在每个函数中查找声明
+* 违反DRY原则：会导致大量重复的声明
+* 没有实际好处：合约级别已经足够灵活
 
+## 2.4 通配符使用
+除了为特定类型附加库函数，Solidity还支持使用通配符*将库函数附加到所有类型。这是一个强大但需要谨慎使用的特性。
+**通配符的含义：**
+using LibName for *;表示将库中的所有函数附加到所有类型上。编译器**会根据函数签名自动匹配合适的类型**。
 
+**适用场景：**
 
+* 库中有多个针对不同类型的函数
+* 希望统一使用方式
+* 避免多次声明
 
+```sol
+// 示例
+library UniversalLib {
+    function toString(uint256 value) internal pure returns (string memory) {
+        // 实现...
+    }
+    
+    function toBytes(address addr) internal pure returns (bytes memory) {
+        // 实现...
+    }
+}
 
-
-
+contract MyContract {
+    using UniversalLib for *;  // 附加到所有类型
+    
+    function test1(uint256 x) public pure returns (string memory) {
+        return x.toString();  // uint256可以使用
+    }
+    
+    function test2(address addr) public pure returns (bytes memory) {
+        return addr.toBytes();  // address可以使用
+    }
+}
+```
 
 
 
