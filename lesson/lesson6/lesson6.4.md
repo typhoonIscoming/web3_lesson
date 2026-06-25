@@ -400,6 +400,336 @@ OpenZeppelin的价值：
 
 对于Solidity开发者来说，学习和使用OpenZeppelin是必修课。
 
+## 4.2 核心库组件
+OpenZeppelin提供了丰富的库组件，覆盖了智能合约开发的各个方面。让我们深入了解几个最常用的核心库。
+
+### SafeMath - 安全数学运算
+SafeMath是OpenZeppelin最著名的库之一，它解决了Solidity早期版本中的一个重大安全问题。
+
+历史背景：
+
+在Solidity 0.8.0之前，整数运算可能发生溢出而不报错，这导致了许多严重的安全事故。最著名的是2018年的BEC（BeautyChain）事件，黑客利用整数溢出漏洞凭空创造了大量代币，导致项目崩盘。
+
+SafeMath的出现改变了这一切。它在每次运算后都检查是否发生溢出，一旦发现就立即回滚交易，避免了无数潜在的安全问题。
+
+作用：防止整数上溢和下溢
+```sol
+library SafeMath {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 c = a + b;
+        require(c >= a, "SafeMath: addition overflow");
+        return c;
+    }
+    
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b <= a, "SafeMath: subtraction underflow");
+        return a - b;
+    }
+    
+    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+        if (a == 0) return 0;
+        uint256 c = a * b;
+        require(c / a == b, "SafeMath: multiplication overflow");
+        return c;
+    }
+    
+    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b > 0, "SafeMath: division by zero");
+        return a / b;
+    }
+}
+```
+溢出检测原理：
+
+以加法为例，require(c >= a, "addition overflow")为什么能检测溢出？
+
+原理是：如果a + b发生溢出，结果会回绕到一个很小的数，因此c < a。正常情况下，两个正数相加，结果必定大于等于任一加数。这个简单的数学原理就是SafeMath的核心。
+
+**重要说明**
+Solidity 0.8.0+已内置溢出检查，新项目不再需要SafeMath。但理解SafeMath仍然很重要：
+
+* 学习价值：理解如何检测溢出，这是安全编程的基础
+* 历史意义：SafeMath拯救了无数项目，是库合约应用的经典案例
+* 向后兼容：许多现存合约仍在使用SafeMath
+* 面试常考：SafeMath是面试中经常被问到的话题
+* 展示库的价值：SafeMath完美展示了库如何解决语言层面的问题
+
+即使在Solidity 0.8.0+，SafeMath仍然是学习库合约的最佳示例。
+
+**Strings - 字符串处理**
+Solidity对字符串的原生支持非常有限，这是语言设计的一个遗憾。Strings库填补了这个空白，提供了各种实用的字符串处理功能。
+
+为什么需要Strings库？
+
+Solidity中的字符串问题：
+
+* 不能直接比较（str1 == str2编译错误）
+* 不能获取长度（需要转换为bytes）
+* 不能直接拼接（0.8.12之前）
+* uint转string不支持（非常常用的需求）
+
+Strings库解决了这些问题，特别是类型转换功能，在NFT、DApp等场景中非常实用。
+
+作用：提供字符串处理和类型转换功能
+```sol
+library Strings {
+    // uint256转string
+    function toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
+    }
+    
+    // 转换为十六进制字符串
+    function toHexString(uint256 value, uint256 length) 
+        internal pure returns (string memory) 
+    {
+        bytes memory buffer = new bytes(2 * length + 2);
+        buffer[0] = "0";
+        buffer[1] = "x";
+        for (uint256 i = 2 * length + 1; i > 1; --i) {
+            buffer[i] = _HEX_SYMBOLS[value & 0xf];
+            value >>= 4;
+        }
+        return string(buffer);
+    }
+    
+    bytes16 private constant _HEX_SYMBOLS = "0123456789abcdef";
+}
+```
+**代码解析**
+toString函数： 这个函数将uint256转换为string。实现原理是：
+
+* 先确定数字有多少位
+* 创建对应长度的bytes数组
+* 从后向前填充每一位数字（转换为ASCII码）
+* 将bytes数组转换为string返回
+
+这是一个典型的算法实现，展示了如何在Solidity中处理类型转换。
+
+toHexString函数： 将数字转换为十六进制字符串表示，常用于：
+
+* 显示地址（地址本质是uint160）
+* 显示哈希值
+* 调试输出
+
+使用场景：
+
+Strings库在NFT项目中特别有用，因为：
+
+* tokenURI需要动态生成
+* 元数据需要包含tokenId
+* 需要格式化地址和数字
+
+**使用示例：**
+```sol
+contract NFTMetadata {
+    using Strings for uint256;
+    
+    function tokenURI(uint256 tokenId) public pure returns (string memory) {
+        return string(abi.encodePacked(
+            "https://api.mynft.com/token/",
+            tokenId.toString()  // 将数字转为字符串
+        ));
+    }
+}
+```
+这个NFT合约展示了Strings库的实际应用。tokenURI函数生成NFT的元数据链接，通过tokenId.toString()将数字转换为字符串，然后拼接到URL中。这在没有Strings库时是很难实现的。
+
+EnumerableSet - 可枚举集合
+EnumerableSet是一个非常实用的数据结构库，它解决了Solidity中集合操作的痛点。
+
+Solidity中集合的问题：
+
+在Solidity中，我们有两种基本数据结构：
+
+* 数组（array）：可以遍历，但查找慢（O(n)）
+* 映射（mapping）：查找快（O(1)），但不能遍历
+
+如果你需要一个既能快速查找，又能遍历的集合呢？这就是EnumerableSet的用武之地。
+
+EnumerableSet的优势：
+
+* O(1)查找：像mapping一样快速检查元素是否存在
+* 可遍历：像array一样可以遍历所有元素
+* 自动去重：添加已存在的元素会失败
+* 高效删除：使用交换-删除技巧，O(1)时间复杂度
+
+实现原理：
+
+EnumerableSet巧妙地结合了array和mapping：
+
+* 用array存储所有元素（用于遍历）
+* 用mapping记录元素的索引（用于快速查找）
+* 两个数据结构同步更新，发挥各自优势
+
+作用：实现可枚举的集合数据结构
+```sol
+library EnumerableSet {
+    struct Set {
+        address[] _values;
+        mapping(address => uint256) _indexes;
+    }
+    
+    function add(Set storage set, address value) internal returns (bool) {
+        if (!contains(set, value)) {
+            set._values.push(value);
+            set._indexes[value] = set._values.length;
+            return true;
+        }
+        return false;
+    }
+    
+    function remove(Set storage set, address value) internal returns (bool) {
+        uint256 valueIndex = set._indexes[value];
+        if (valueIndex != 0) {
+            uint256 toDeleteIndex = valueIndex - 1;
+            uint256 lastIndex = set._values.length - 1;
+            
+            if (toDeleteIndex != lastIndex) {
+                address lastValue = set._values[lastIndex];
+                set._values[toDeleteIndex] = lastValue;
+                set._indexes[lastValue] = valueIndex;
+            }
+            
+            set._values.pop();
+            delete set._indexes[value];
+            return true;
+        }
+        return false;
+    }
+    
+    function contains(Set storage set, address value) 
+        internal view returns (bool) 
+    {
+        return set._indexes[value] != 0;
+    }
+    
+    function length(Set storage set) internal view returns (uint256) {
+        return set._values.length;
+    }
+    
+    function at(Set storage set, uint256 index) 
+        internal view returns (address) 
+    {
+        return set._values[index];
+    }
+}
+```
+代码解析：
+
+add函数：
+
+* 检查元素是否已存在（通过mapping）
+* 如果不存在，添加到array
+* 同时在mapping中记录位置
+* 返回true表示成功添加
+
+remove函数：
+
+* 使用"交换-删除"技巧（前面课程学过）
+* 用最后一个元素替换要删除的元素
+* 然后删除最后一个元素
+* 同时更新mapping
+
+contains函数：
+
+* O(1)时间复杂度检查存在性
+* 这是EnumerableSet的核心优势
+* 这个实现展示了如何巧妙地结合两种数据结构，获得两者的优势。
+
+**使用场景：**
+
+EnumerableSet特别适合以下场景：
+
+* 白名单/黑名单管理：需要检查和遍历
+* 成员列表管理：DAO成员、VIP用户等
+* 唯一ID集合：NFT持有者列表、订单ID集合
+* 权限管理：需要列出所有有权限的地址
+
+在实际项目中，EnumerableSet是使用频率非常高的库，几乎所有需要管理地址列表的场景都会用到它。
+
+### Address - 地址工具库
+Address库提供了一系列地址相关的实用函数，让地址操作更加安全和便捷。
+
+为什么需要Address库？
+
+直接操作地址容易出现安全问题：
+
+* 向非合约地址调用函数会失败
+* 转账失败不易处理
+* 低级call调用容易出错
+* 返回数据处理复杂
+
+Address库封装了这些操作，提供了安全可靠的接口。
+
+作用：提供安全的地址操作函数
+```sol
+library Address {
+    // 检查是否为合约
+    function isContract(address account) internal view returns (bool) {
+        return account.code.length > 0;
+    }
+    
+    // 安全的转账
+    function sendValue(address payable recipient, uint256 amount) internal {
+        require(address(this).balance >= amount, "Insufficient balance");
+        
+        (bool success, ) = recipient.call{value: amount}("");
+        require(success, "Address: unable to send value");
+    }
+    
+    // 带返回数据的调用
+    function functionCall(address target, bytes memory data) 
+        internal returns (bytes memory) 
+    {
+        return functionCallWithValue(target, data, 0);
+    }
+    
+    function functionCallWithValue(
+        address target,
+        bytes memory data,
+        uint256 value
+    ) internal returns (bytes memory) {
+        require(address(this).balance >= value, "Insufficient balance");
+        require(isContract(target), "Address: call to non-contract");
+        
+        (bool success, bytes memory returndata) = target.call{value: value}(data);
+        return verifyCallResult(success, returndata);
+    }
+    
+    function verifyCallResult(
+        bool success,
+        bytes memory returndata
+    ) internal pure returns (bytes memory) {
+        if (success) {
+            return returndata;
+        } else {
+            if (returndata.length > 0) {
+                assembly {
+                    let returndata_size := mload(returndata)
+                    revert(add(32, returndata), returndata_size)
+                }
+            } else {
+                revert("Address: low-level call failed");
+            }
+        }
+    }
+}
+```
 
 
 
