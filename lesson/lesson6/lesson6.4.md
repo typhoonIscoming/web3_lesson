@@ -719,6 +719,7 @@ library Address {
             return returndata;
         } else {
             if (returndata.length > 0) {
+                // := 声明并赋值 
                 assembly {
                     let returndata_size := mload(returndata)
                     revert(add(32, returndata), returndata_size)
@@ -730,12 +731,38 @@ library Address {
     }
 }
 ```
+**核心函数解析：**
 
+isContract函数：
 
+* 检查地址是否是合约
+* 通过代码长度判断（合约有代码，EOA没有）
+* 注意：在构造函数中调用会误判
 
+sendValue函数：
 
+* 安全的ETH转账封装
+* 检查余额充足
+* 处理转账失败
+* 比直接使用transfer或call更安全
 
+functionCall系列：
 
+* 封装了低级call操作
+* 自动检查调用结果
+* 处理返回数据
+* 统一的错误处理
+
+**实际应用：**
+
+Address库在以下场景特别有用：
+
+* 多签钱包：需要调用任意合约
+* 代理合约：需要安全的DELEGATECALL
+* 支付系统：需要安全的转账
+* 工厂合约：需要检查部署结果
+
+这些函数看似简单，但它们封装了大量的安全检查和错误处理逻辑，使用它们可以避免很多潜在的安全问题。
 
 
 
