@@ -180,21 +180,181 @@ contract WrongUsage {
     using MathLib for uint256;
 }
 ```
+**类型匹配的规则：**
+
+using for声明时，类型必须与库函数的第一个参数类型匹配：
+
+```sol
+library MathLib {
+    // 第一个参数是uint256
+    function addOne(uint256 a) internal pure returns (uint256) {
+        return a + 1;
+    }
+}
+
+// 正确：类型匹配
+using MathLib for uint256;  // ✓
+
+// 错误：类型不匹配
+// using MathLib for address;  // ✗
+// using MathLib for string;   // ✗
+```
+如何避免这个错误：
+
+* 检查函数签名：看清第一个参数的类型
+* 对应声明：using for的类型与参数类型一致
+* 编译器提示：注意编译错误消息
+* 测试验证：编写简单测试确认可用
+
+调试技巧：
+
+如果遇到类型不匹配错误：
+
+* 查看库函数的第一个参数类型
+* 确认using for声明的类型
+* 确保两者完全一致
+* 注意uint和uint256是等价的，但要统一
+
+虽然这个错误编译器会捕获，但理解原因可以让你更好地设计库函数。
+
+## 注意事项总结
+让我们总结一下使用库合约时需要特别注意的关键要点。这些要点来自于无数开发者的经验教训，牢记它们可以帮你避免大量的问题。
+
+**七大关键要点：**
+
+1. 库合约不能声明状态变量：这是编译器强制的，违反会报错。记住：库是工具，不是容器。
+
+2. 外部库通过DELEGATECALL调用：理解DELEGATECALL机制，知道它在调用者上下文执行。
+
+3. 内部库通过JUMP指令调用：内部库嵌入代码，调用成本低，适合简单函数。
+
+4. 确保对存储布局有清晰理解：操作storage时要格外小心，使用明确的引用传递。
+
+5. using for要确保类型匹配：第一个参数类型必须与using for声明的类型一致。
+
+6. 外部库需要先部署再链接：在Hardhat/Foundry中需要配置链接，不要忘记这一步。
+
+7. 库函数应该是pure或view：尽量避免修改状态的函数，保持库的纯粹性。
+
+记忆口诀：
+
+* 无状态、纯函数、类型配
+* 内部快、外部享、存储慎
+* 测试全、文档清、用成熟
+
+遵循这些要点，你的库合约会更加安全、高效、可维护。
 
 
+## 练习3：地址白名单库
+这是一个高级练习，涉及复杂的数据结构操作。完成这个练习，你将掌握EnumerableSet模式，这是OpenZeppelin中最实用的数据结构之一。
 
+学习目标：
 
+* 理解array+mapping组合模式
+* 掌握集合操作的实现
+* 学习using for与struct的配合
+* 实践storage引用的正确使用
 
+设计思路：
 
+EnumerableSet的核心思想是组合两种数据结构的优势：
 
+* array提供遍历能力
+* mapping提供O(1)查找能力
+* 同步维护两个结构
+* 删除时使用交换技巧
 
+这是一个经典的数据结构设计，值得仔细学习。
 
+任务：
 
+实现一个管理地址白名单的库。
 
+要求：
 
+* 使用EnumerableSet数据结构
+* 实现添加、移除、检查功能
+* 支持遍历所有地址
 
+```sol
+library AddressSet {
+    struct Set {
+        address[] values;
+        mapping(address => uint256) indexes;
+    }
+    
+    function add(Set storage set, address value) internal returns (bool) {
+        if (contains(set, value)) {
+            return false;
+        }
+        
+        set.values.push(value);
+        set.indexes[value] = set.values.length;
+        return true;
+    }
+    
+    function remove(Set storage set, address value) internal returns (bool) {
+        uint256 index = set.indexes[value];
+        
+        if (index == 0) {
+            return false;
+        }
+        
+        uint256 toDeleteIndex = index - 1;
+        uint256 lastIndex = set.values.length - 1;
+        
+        if (toDeleteIndex != lastIndex) {
+            address lastValue = set.values[lastIndex];
+            set.values[toDeleteIndex] = lastValue;
+            set.indexes[lastValue] = index;
+        }
+        
+        set.values.pop();
+        delete set.indexes[value];
+        
+        return true;
+    }
+    
+    function contains(Set storage set, address value) 
+        internal view returns (bool) 
+    {
+        return set.indexes[value] != 0;
+    }
+    
+    function length(Set storage set) internal view returns (uint256) {
+        return set.values.length;
+    }
+    
+    function at(Set storage set, uint256 index) 
+        internal view returns (address) 
+    {
+        require(index < set.values.length, "Index out of bounds");
+        return set.values[index];
+    }
+}
 
-
+contract Whitelist {
+    using AddressSet for AddressSet.Set;
+    
+    AddressSet.Set private whitelist;
+    
+    function addToWhitelist(address account) public {
+        require(whitelist.add(account), "Already in whitelist");
+    }
+    
+    function removeFromWhitelist(address account) public {
+        require(whitelist.remove(account), "Not in whitelist");
+    }
+    
+    function isWhitelisted(address account) public view returns (bool) {
+        return whitelist.contains(account);
+    }
+    
+    function getWhitelistSize() public view returns (uint256) {
+        return whitelist.length();
+    }
+}
+```
 
 
 
