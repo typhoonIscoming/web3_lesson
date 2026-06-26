@@ -729,15 +729,273 @@ contract DataGrouping {
 }
 ```
 
+**原则2：避免重复存储**
+```sol
+contract AvoidDuplication {
+    mapping(uint256 => address) public orderCreators;
+    
+    // ❌ 重复存储：creator既在状态变量又在事件中
+    event OrderCreatedBad(
+        uint256 indexed orderId,
+        address indexed creator,    // 已存储在orderCreators中
+        uint256 amount
+    );
+    
+    // ✅ 只在状态变量中存储，事件中只记录ID
+    event OrderCreatedGood(
+        uint256 indexed orderId,
+        uint256 amount
+    );
+    
+    function createOrder(uint256 amount) public {
+        uint256 orderId = nextOrderId++;
+        orderCreators[orderId] = msg.sender;
+        
+        // 前端可以通过orderId查询orderCreators获取creator
+        emit OrderCreatedGood(orderId, amount);
+    }
+}
+```
+**原则3：使用紧凑的数据类型**
+```sol
+contract CompactTypes {
+    // ❌ 使用过大的类型
+    event TimestampRecorded(
+        uint256 timestamp          // uint256 (32 bytes) 对于时间戳过大
+    );
+    
+    // ✅ 使用合适大小的类型
+    event TimestampRecordedBetter(
+        uint48 timestamp           // uint48 足够表示到2100+年
+    );
+    
+    // ✅ 组合多个小类型
+    event CompactData(
+        uint48 timestamp,          // 6 bytes
+        uint8 status,              // 1 byte
+        uint8 priority             // 1 byte
+        // 总共8 bytes，而不是3个uint256的96 bytes
+    );
+}
+```
+
+## 4.7 合理使用匿名事件
+只在确实需要4个indexed参数时使用匿名事件。大多数情况下，普通事件更合适。
+```sol
+contract AnonymousUsage {
+    // ❌ 不必要的匿名事件
+    event TransferBad(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    ) anonymous;                   // 只有2个indexed，不需要匿名
+    
+    // ✅ 普通事件足够
+    event TransferGood(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    );
+    
+    // ✅ 需要4个indexed时才使用匿名
+    event ComplexSwap(
+        address indexed user,
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 indexed poolId,    // 第4个indexed参数
+        uint256 amountIn,
+        uint256 amountOut
+    ) anonymous;
+}
+```
+## 4.8 文档化事件
+为事件添加详细的NatSpec注释，说明事件的用途、参数含义、触发条件。
+```sol
+contract DocumentedEvents {
+    /**
+     * @notice 当代币转账时触发
+     * @dev 铸造时from为address(0)，销毁时to为address(0)
+     * @param from 发送方地址
+     * @param to 接收方地址
+     * @param value 转账金额
+     */
+    event Transfer(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    );
+    
+    /**
+     * @notice 当用户授权第三方使用其代币时触发
+     * @dev 设置授权额度为0可以撤销授权
+     * @param owner 代币所有者地址
+     * @param spender 被授权地址
+     * @param value 授权金额
+     */
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
+    
+    /**
+     * @notice 当订单被创建时触发
+     * @dev 订单ID从1开始递增
+     * @param orderId 订单唯一标识符
+     * @param creator 订单创建者地址
+     * @param tokenIn 输入代币地址
+     * @param tokenOut 输出代币地址
+     * @param amountIn 输入数量
+     * @param amountOut 预期输出数量
+     * @param deadline 订单过期时间戳
+     */
+    event OrderCreated(
+        uint256 indexed orderId,
+        address indexed creator,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOut,
+        uint256 deadline
+    );
+}
+```
+## 4.9 始终使用emit关键字
+Solidity 0.4.21之后，触发事件必须使用emit关键字。虽然旧版本不需要，但现代代码应该始终使用。
+```sol
+contract EmitKeyword {
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    
+    // ❌ 旧语法（Solidity < 0.4.21）
+    function transferOldStyle(address to, uint256 amount) public {
+        // 转账逻辑...
+        Transfer(msg.sender, to, amount);  // 没有emit关键字
+    }
+    
+    // ✅ 现代语法（推荐）
+    function transferModernStyle(address to, uint256 amount) public {
+        // 转账逻辑...
+        emit Transfer(msg.sender, to, amount);  // 使用emit关键字
+    }
+}
+```
+使用emit的好处：
+
+* 代码更清晰，明确表示这是触发事件
+* 与函数调用区分开来
+* 符合最新的Solidity规范
+* 更好的工具支持
 
 
+## 4.10 安全考量
+考虑事件可能带来的安全影响，妥善处理各种异常情况。
 
-
-
-
-
-
-
+1. 防止事件被用于DOS攻击
+```sol
+contract DOSPrevention {
+    event MessageSent(address indexed from, string message);
+    
+    // ❌ 可能被用于DOS攻击
+    function sendMessageBad(string memory message) public {
+        // 没有长度限制，恶意用户可以发送超长字符串
+        emit MessageSent(msg.sender, message);
+    }
+    
+    // ✅ 添加长度限制
+    function sendMessageGood(string memory message) public {
+        require(bytes(message).length <= 280, "Message too long");
+        emit MessageSent(msg.sender, message);
+    }
+}
+```
+2. 关键操作必须触发事件
+```sol
+contract CriticalEvents {
+    address public owner;
+    
+    // ❌ 敏感操作没有触发事件
+    function transferOwnershipBad(address newOwner) public {
+        require(msg.sender == owner, "Not owner");
+        owner = newOwner;  // 没有事件，无法追踪
+    }
+    
+    // ✅ 敏感操作触发事件
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    
+    function transferOwnershipGood(address newOwner) public {
+        require(msg.sender == owner, "Not owner");
+        require(newOwner != address(0), "Invalid address");
+        
+        address oldOwner = owner;
+        owner = newOwner;
+        
+        // 触发事件，便于监控和审计
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
+```
+3. 事件顺序的重要性
+```sol
+contract EventOrder {
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    
+    mapping(address => uint256) public balances;
+    
+    // ❌ 状态更新后才检查，可能产生误导性事件
+    function transferBad(address to, uint256 amount) public {
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+        
+        emit Transfer(msg.sender, to, amount);
+        
+        require(balances[msg.sender] >= 0, "Insufficient balance");  // 检查太晚
+    }
+    
+    // ✅ 先检查，再更新状态，最后触发事件
+    function transferGood(address to, uint256 amount) public {
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+        
+        emit Transfer(msg.sender, to, amount);  // 只有成功时才触发
+    }
+}
+```
+4. 处理重入攻击
+```sol
+contract ReentrancySafe {
+    event Withdrawal(address indexed user, uint256 amount);
+    
+    mapping(address => uint256) public balances;
+    
+    // ❌ 重入漏洞
+    function withdrawBad(uint256 amount) public {
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        
+        emit Withdrawal(msg.sender, amount);  // 先触发事件
+        
+        (bool success, ) = msg.sender.call{value: amount}("");  // 外部调用
+        require(success, "Transfer failed");
+        
+        balances[msg.sender] -= amount;  // 后更新状态（危险！）
+    }
+    
+    // ✅ 遵循Checks-Effects-Interactions模式
+    function withdrawGood(uint256 amount) public {
+        // Checks: 检查条件
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        
+        // Effects: 更新状态
+        balances[msg.sender] -= amount;
+        
+        // Interactions: 外部调用和触发事件
+        emit Withdrawal(msg.sender, amount);
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+    }
+}
+```
 
 
 
