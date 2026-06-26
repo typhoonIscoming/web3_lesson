@@ -137,5 +137,13 @@
         "file": "@openzeppelin/contracts@5.6.1/utils/Bytes.sol"
       }
     }
+  },
+  "contracts/EventDemo.sol": {
+    "__sources__": {
+      "contracts/EventDemo.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.19;\n\ncontract EventDemo {\n    event Transfer(address indexed from, address indexed to, uint256 value);\n    event DataUpdate(address indexed user, uint256 indexed id, string data, uint256 timestamp);\n    \n    mapping(address => uint256) public balances;\n    \n    constructor() {\n        balances[msg.sender] = 1000;\n    }\n    \n    function transfer(address to, uint256 amount) public {\n        require(balances[msg.sender] >= amount, \"Insufficient balance\");\n        \n        balances[msg.sender] -= amount;\n        balances[to] += amount;\n        \n        emit Transfer(msg.sender, to, amount);\n    }\n    \n    function updateData(uint256 id, string memory data) public {\n        emit DataUpdate(msg.sender, id, data, block.timestamp);\n    }\n}",
+        "file": "contracts/EventDemo.sol"
+      }
+    }
   }
 }
