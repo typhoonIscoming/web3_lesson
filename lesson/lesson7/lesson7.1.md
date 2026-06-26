@@ -593,6 +593,133 @@ contract PerformanceComparison {
     );
 }
 ```
+假设合约有10,000个Transfer事件：
+
+使用indexed参数查询：
+
+* 区块链节点直接从topics索引查找
+* 只需要检查符合条件的事件
+* 查询时间：毫秒级
+* 数据传输：只传输匹配的事件
+
+不使用indexed参数查询：
+
+* 需要下载所有10,000个事件
+* 逐个解析data字段
+* 在客户端进行过滤
+* 查询时间：秒级或更长
+* 数据传输：所有事件数据
+
+性能差异：100-1000倍
+
+## 2.5 indexed参数的最佳实践
+
+**1. 选择最常查询的参数**
+根据实际使用场景，将最常用作查询条件的参数标记为indexed。
+```sol
+// ERC20代币转账
+event Transfer(
+    address indexed from,     // ✅ 常查询：某地址发送的转账
+    address indexed to,       // ✅ 常查询：某地址接收的转账
+    uint256 value             // ❌ 较少按金额查询
+);
+
+// NFT交易
+event Trade(
+    uint256 indexed tokenId,  // ✅ 常查询：某NFT的交易历史
+    address indexed seller,   // ✅ 常查询：某用户卖出的NFT
+    address indexed buyer,    // ✅ 常查询：某用户买入的NFT
+    uint256 price             // ❌ 较少按价格查询
+);
+```
+
+**2. 优先选择值类型作为indexed**
+
+值类型indexed后可以直接查询，引用类型indexed后只能得到哈希值。
+
+```sol
+contract IndexedTypeSelection {
+    // ✅ 好：值类型indexed
+    event UserAction(
+        address indexed user,      // 值类型，可直接查询
+        uint256 indexed actionId,  // 值类型，可直接查询
+        bytes32 indexed category,  // 固定大小，可直接查询
+        string description         // 引用类型，不indexed
+    );
+    
+    // ⚠️ 需谨慎：引用类型indexed
+    event DataUpdate(
+        string indexed key,        // 引用类型，只能得到哈希
+        string value               // 引用类型，完整数据
+    );
+}
+```
+**3. 平衡indexed参数数量**
+不是indexed参数越多越好，要根据实际需求平衡：
+```sol
+contract BalancedIndexing {
+    // ✅ 合理：2-3个核心查询维度
+    event OrderCreated(
+        uint256 indexed orderId,
+        address indexed creator,
+        uint256 amount,
+        uint256 timestamp
+    );
+    
+    // ❌ 过度：所有参数都indexed（达到上限）
+    event OrderExecutedBad(
+        uint256 indexed orderId,
+        address indexed executor,
+        uint256 indexed timestamp  // timestamp很少用于查询
+    );
+    
+    // ✅ 更好：只indexed真正需要查询的
+    event OrderExecutedGood(
+        uint256 indexed orderId,
+        address indexed executor,
+        uint256 timestamp,         // 不indexed，节省一个位置
+        uint256 gasUsed
+    );
+}
+```
+**4. 考虑多维度查询需求**
+设计事件时要考虑各种查询场景：
+```sol
+contract MultidimensionalQuery {
+    event Swap(
+        address indexed user,        // 查询：某用户的所有交易
+        address indexed tokenIn,     // 查询：某代币作为输入的交易
+        address indexed tokenOut,    // 查询：某代币作为输出的交易
+        uint256 amountIn,
+        uint256 amountOut,
+        uint256 timestamp
+    );
+    
+    // 支持的查询场景：
+    // 1. 某用户的所有Swap：filter(user, null, null)
+    // 2. 某代币作为输入：filter(null, tokenIn, null)
+    // 3. 某代币作为输出：filter(null, null, tokenOut)
+    // 4. 某用户用某代币买入：filter(user, tokenIn, null)
+    // 5. 某用户卖出某代币：filter(user, null, tokenOut)
+    // 6. 特定代币对的交易：filter(null, tokenA, tokenB)
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
