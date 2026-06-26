@@ -513,18 +513,86 @@ contract BestPractice {
     );
 }
 ```
+## 2.4 indexed参数的查询示例
+使用indexed参数进行高效查询：
 
+indexed参数的主要价值在于查询效率。以下是一些常见的查询场景：
 
+**场景1：查询特定用户的所有转账（作为发送方）**
 
+```sol
+contract Token {
+    event Transfer(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    );
+    
+    function transfer(address to, uint256 amount) public {
+        // 转账逻辑...
+        emit Transfer(msg.sender, to, amount);
+    }
+}
+```
+前端查询代码（使用ethers.js）：
+```sol
+// 查询特定地址作为发送方的所有转账
+const userAddress = "0x1234...";
 
+// 创建过滤器：只查询from=userAddress的事件
+const filter = contract.filters.Transfer(userAddress, null);
 
+// 执行查询
+const events = await contract.queryFilter(filter);
 
+// 遍历结果
+events.forEach(event => {
+    console.log(`从 ${event.args.from} 转账 ${event.args.value} 到 ${event.args.to}`);
+});
+```
 
+**场景2：查询特定用户的所有转账（作为接收方）**
+```sol
+// 查询特定地址作为接收方的所有转账
+const userAddress = "0x1234...";
 
+// 创建过滤器：只查询to=userAddress的事件
+const filter = contract.filters.Transfer(null, userAddress);
 
+// 执行查询
+const events = await contract.queryFilter(filter);
+```
 
+**场景3：查询两个特定地址之间的转账**
+```sol
+// 查询从地址A到地址B的所有转账
+const addressA = "0xAAA...";
+const addressB = "0xBBB...";
 
+// 创建过滤器：同时指定from和to
+const filter = contract.filters.Transfer(addressA, addressB);
 
+// 执行查询
+const events = await contract.queryFilter(filter);
+```
+性能对比：
+```sol
+contract PerformanceComparison {
+    // 方案1：使用indexed（推荐）
+    event TransferIndexed(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    );
+    
+    // 方案2：不使用indexed（不推荐）
+    event TransferNotIndexed(
+        address from,
+        address to,
+        uint256 value
+    );
+}
+```
 
 
 
