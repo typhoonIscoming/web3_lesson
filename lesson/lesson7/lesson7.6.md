@@ -523,7 +523,99 @@ contract RevertVsRequire {
 |失败影响|交易回滚|交易回滚|交易回滚|
 |典型用例|余额检查、权限验证|数学运算验证|多路径错误处理|
 
+**完整对比示例：**
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
 
+contract ErrorMechanismsComparison {
+    uint256 public balance = 1000;
+    uint256 public totalSupply = 1000;
+    address public owner;
+    
+    error InsufficientBalance(uint256 available, uint256 required);
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    // require示例：输入验证
+    function withdrawRequire(uint256 amount) public {
+        require(amount > 0, "金额必须大于0");           // 输入验证
+        require(msg.sender == owner, "只有所有者可以提现"); // 权限检查
+        require(balance >= amount, "余额不足");         // 状态检查
+        
+        balance -= amount;
+    }
+    
+    // assert示例：不变量检查
+    function transferAssert(address to, uint256 amount) public {
+        require(balance >= amount, "余额不足");
+        
+        uint256 oldBalance = balance;
+        balance -= amount;
+        
+        // 检查不变量：新余额应该等于旧余额减去金额
+        assert(balance == oldBalance - amount);
+    }
+    
+    // revert示例：自定义错误
+    function withdrawRevert(uint256 amount) public {
+        if (amount == 0) {
+            revert("金额必须大于0");
+        }
+        
+        if (msg.sender != owner) {
+            revert("只有所有者可以提现");
+        }
+        
+        if (balance < amount) {
+            revert InsufficientBalance(balance, amount);
+        }
+        
+        balance -= amount;
+    }
+    
+    // 组合使用示例
+    function combinedExample(uint256 amount) public {
+        // 1. 使用require进行输入验证
+        require(amount > 0, "金额必须大于0");
+        require(msg.sender == owner, "只有所有者可以操作");
+        
+        // 2. 使用revert处理复杂条件
+        if (amount > balance / 2) {
+            revert("单次提现不能超过余额的50%");
+        }
+        
+        // 3. 执行操作
+        uint256 oldBalance = balance;
+        balance -= amount;
+        
+        // 4. 使用assert检查不变量
+        assert(balance == oldBalance - amount);
+        assert(balance <= totalSupply);
+    }
+}
+```
+选择建议：
+
+1. 优先使用require：
+
+* 用于所有需要验证的外部输入
+* 用于检查合约状态是否满足执行条件
+* 用于权限验证
+
+2. 谨慎使用assert：
+
+* 只用于检查理论上永远为真的条件
+* 用于开发阶段的调试
+* 用于检查合约内部逻辑的正确性
+
+3. 灵活使用revert：
+
+* 用于复杂的条件判断
+* 用于需要传递详细错误信息的场景
+* 结合自定义错误使用
 
 
 
