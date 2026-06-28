@@ -160,40 +160,368 @@ contract RequireExample {
     }
 }
 ```
+使用场景：
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
 
+contract RequireExample {
+    mapping(address => uint256) public balances;
+    address public owner;
+    
+    constructor() {
+        owner = msg.sender;
+        balances[msg.sender] = 1000;
+    }
+    
+    // 场景1：输入参数验证
+    function transfer(address to, uint256 amount) public {
+        require(to != address(0), "接收地址不能为零地址");
+        require(amount > 0, "转账金额必须大于0");
+        require(balances[msg.sender] >= amount, "余额不足");
+        
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+    
+    // 场景2：权限检查
+    function mint(address to, uint256 amount) public {
+        require(msg.sender == owner, "只有所有者可以铸造");
+        require(to != address(0), "接收地址不能为零地址");
+        
+        balances[to] += amount;
+    }
+    
+    // 场景3：状态检查
+    bool public paused = false;
+    
+    function withdraw(uint256 amount) public {
+        require(!paused, "合约已暂停");
+        require(balances[msg.sender] >= amount, "余额不足");
+        
+        balances[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
+    
+    // 场景4：时间检查
+    uint256 public lockTime;
+    
+    function setLockTime(uint256 duration) public {
+        require(msg.sender == owner, "只有所有者可以设置");
+        lockTime = block.timestamp + duration;
+    }
+    
+    function unlock() public {
+        require(block.timestamp >= lockTime, "尚未到解锁时间");
+        // 解锁操作...
+    }
+}
+```
+在上面的代码中：
 
+* transfer函数使用require验证输入参数的有效性
+* mint函数使用require检查调用者权限
+* withdraw函数使用require检查合约状态
+* unlock函数使用require检查时间条件
 
+require的工作原理：
+```sol
+contract RequireInternals {
+    uint256 public value = 100;
+    
+    function testRequire(uint256 newValue) public {
+        // require内部实际上是这样工作的：
+        // if (!condition) {
+        //     revert("错误消息");
+        // }
+        
+        require(newValue <= 200, "值不能超过200");
+        
+        value = newValue;
+    }
+}
+```
+当require条件为false时：
 
+1. 交易立即停止执行
+2. 所有状态变更回滚
+3. 返回错误消息
+4. 未使用的Gas退还给调用者
 
+## 2.2 assert - 不变量检查
+基本语法：
+```sol
+assert(condition);
+```
+核心特点：
 
+1. 用于不变量检查：验证理论上永远为真的条件
+2. 交易不可恢复：失败表示严重bug
+3. 消耗全部Gas：所有Gas都会被消耗，不会退还
+4. 没有错误消息：assert不支持错误消息
 
+使用场景：
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
 
+contract AssertExample {
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    
+    constructor() {
+        totalSupply = 1000;
+        balanceOf[msg.sender] = 1000;
+    }
+    
+    // 场景1：检查数学运算的正确性
+    function transfer(address to, uint256 amount) public {
+        require(balanceOf[msg.sender] >= amount, "余额不足");
+        
+        uint256 senderBalanceBefore = balanceOf[msg.sender];
+        uint256 recipientBalanceBefore = balanceOf[to];
+        
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        
+        // 检查不变量：总和应该保持不变
+        assert(
+            balanceOf[msg.sender] + balanceOf[to] ==
+            senderBalanceBefore + recipientBalanceBefore
+        );
+    }
+    
+    // 场景2：检查状态一致性
+    function mint(address to, uint256 amount) public {
+        uint256 oldTotalSupply = totalSupply;
+        uint256 oldBalance = balanceOf[to];
+        
+        totalSupply += amount;
+        balanceOf[to] += amount;
+        
+        // 检查不变量：总供应量变化应该等于余额变化
+        assert(totalSupply - oldTotalSupply == balanceOf[to] - oldBalance);
+    }
+    
+    // 场景3：检查合约状态的内部一致性
+    function burn(uint256 amount) public {
+        require(balanceOf[msg.sender] >= amount, "余额不足");
+        
+        balanceOf[msg.sender] -= amount;
+        totalSupply -= amount;
+        
+        // 检查不变量：总供应量不应该小于所有余额之和
+        // 注意：这只是示例，实际中很难遍历所有地址
+        assert(totalSupply >= balanceOf[msg.sender]);
+    }
+}
+```
+assert vs require的区别：
+```sol
+contract AssertVsRequire {
+    uint256 public balance = 100;
+    
+    // 使用require：条件可能为假（用户错误）
+    function withdrawWithRequire(uint256 amount) public {
+        require(balance >= amount, "余额不足");  // 用户可能输入错误金额
+        balance -= amount;
+    }
+    
+    // 使用assert：条件永远应该为真（程序错误）
+    function withdrawWithAssert(uint256 amount) public {
+        require(balance >= amount, "余额不足");
+        
+        uint256 oldBalance = balance;
+        balance -= amount;
+        
+        // 这个条件理论上永远为真，如果为假说明代码有bug
+        assert(balance == oldBalance - amount);
+    }
+}
+```
+何时使用assert：
 
+1. 检查溢出/下溢（Solidity 0.8.0之前）：
+```sol
+contract OverflowCheck {
+    function add(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 c = a + b;
+        assert(c >= a);  // 检查是否溢出
+        return c;
+    }
+}
+```
 
+2. 检查状态一致性：
 
+```sol
+contract StateConsistency {
+    uint256 public total;
+    uint256 public partA;
+    uint256 public partB;
+    
+    function update(uint256 _partA, uint256 _partB) public {
+        partA = _partA;
+        partB = _partB;
+        total = partA + partB;
+        
+        // 检查不变量
+        assert(total == partA + partB);
+    }
+}
+```
+3. 检查合约内部逻辑：
+```sol
+contract InternalLogic {
+    enum State { Created, Active, Completed }
+    State public state;
+    
+    function complete() public {
+        require(state == State.Active, "只能完成活跃状态的任务");
+        state = State.Completed;
+        
+        // 检查状态转换是否正确
+        assert(state == State.Completed);
+    }
+}
+```
 
+## 2.3 revert - 自定义错误处理
+基本语法：
+```sol
+revert("错误消息");
+// 或者使用自定义错误
+revert CustomError(param1, param2);
+```
+核心特点：
 
+1. 灵活的错误处理：可以在任何位置使用
+2. 支持自定义错误：可以传递结构化的错误信息
+3. 交易可恢复：与require类似，会退还未使用的Gas
+4. 更适合复杂逻辑：在if-else中使用更自然
 
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+contract RevertExample {
+    mapping(address => uint256) public balances;
+    mapping(address => bool) public blacklist;
+    
+    // 定义自定义错误
+    error InsufficientBalance(uint256 available, uint256 required);
+    error Blacklisted(address account);
+    error InvalidAmount(uint256 amount);
+    
+    constructor() {
+        balances[msg.sender] = 1000;
+    }
+    
+    // 场景1：复杂条件判断
+    function transfer(address to, uint256 amount) public {
+        // 使用revert处理复杂条件
+        if (to == address(0)) {
+            revert("接收地址不能为零地址");
+        }
+        
+        if (blacklist[msg.sender]) {
+            revert Blacklisted(msg.sender);
+        }
+        
+        if (blacklist[to]) {
+            revert Blacklisted(to);
+        }
+        
+        if (amount == 0) {
+            revert InvalidAmount(amount);
+        }
+        
+        if (balances[msg.sender] < amount) {
+            revert InsufficientBalance(balances[msg.sender], amount);
+        }
+        
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+    
+    // 场景2：多路径错误处理
+    function withdraw(uint256 amount, bool emergency) public {
+        if (emergency) {
+            // 紧急提现，不检查余额
+            if (msg.sender != owner) {
+                revert("只有所有者可以紧急提现");
+            }
+            // 紧急提现逻辑...
+        } else {
+            // 正常提现，检查余额
+            if (balances[msg.sender] < amount) {
+                revert InsufficientBalance(balances[msg.sender], amount);
+            }
+            balances[msg.sender] -= amount;
+            // 提现逻辑...
+        }
+    }
+    
+    address public owner;
+    
+    // 场景3：提前退出函数
+    function complexOperation(uint256 value) public {
+        // 提前检查，如果不满足条件直接返回
+        if (value > 1000) {
+            revert("值过大");
+        }
+        
+        // 执行复杂操作...
+        for (uint256 i = 0; i < value; i++) {
+            // 某些操作...
+            
+            if (/* 某个条件 */ false) {
+                revert("操作过程中发生错误");
+            }
+        }
+    }
+}
+```
+**revert vs require的选择：**
+```sol
+contract RevertVsRequire {
+    mapping(address => uint256) public balances;
+    
+    // 使用require：简单的条件检查
+    function transferRequire(address to, uint256 amount) public {
+        require(to != address(0), "无效接收地址");
+        require(balances[msg.sender] >= amount, "余额不足");
+        
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+    
+    // 使用revert：复杂的条件判断
+    function transferRevert(address to, uint256 amount) public {
+        if (to == address(0)) {
+            revert("无效接收地址");
+        }
+        
+        if (balances[msg.sender] < amount) {
+            revert InsufficientBalance(balances[msg.sender], amount);
+        }
+        
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+    
+    error InsufficientBalance(uint256 available, uint256 required);
+}
+```
+## 2.4 三种机制的对比
+|特性|require|assert|revert|
+|:--:|:--:|:--:|:--:|
+|用途|输入验证、条件检查|不变量检查、内部一致性|自定义错误处理|
+|Gas返还|✅ 是|❌ 否（消耗全部）|✅ 是|
+|错误消息|✅ 支持字符串|❌ 不支持|✅ 支持字符串和自定义错误|
+|使用场景|函数入口验证|内部逻辑检查|复杂条件判断|
+|失败影响|交易回滚|交易回滚|交易回滚|
+|典型用例|余额检查、权限验证|数学运算验证|多路径错误处理|
 
 
 
