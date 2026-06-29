@@ -328,16 +328,315 @@ contract SimpleBank {
 }
 ```
 
+## 9.2 练习2：try-catch实践（⭐⭐⭐难度）
+任务：创建一个代币交换合约,使用try-catch处理外部ERC20代币转账可能出现的异常。
+
+要求：
+
+* 使用try-catch捕获代币转账错误
+* 区分不同类型的错误（字符串错误、Panic、自定义错误）
+* 实现失败回滚机制
+
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+}
+
+contract TokenSwap {
+    event SwapSuccess(address indexed user, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
+    event SwapFailed(address indexed user, string reason);
+    event SwapFailedPanic(address indexed user, uint256 errorCode);
+    event SwapFailedCustom(address indexed user, bytes errorData);
+    
+    /**
+     * @notice 交换代币
+     */
+    function swap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOut
+    ) public returns (bool) {
+        // 步骤1：从用户转入tokenIn
+        try IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn) returns (bool success) {
+            if (!success) {
+                emit SwapFailed(msg.sender, "TransferFrom returned false");
+                return false;
+            }
+            
+            // 步骤2：向用户转出tokenOut
+            try IERC20(tokenOut).transfer(msg.sender, amountOut) returns (bool success2) {
+                if (!success2) {
+                    // tokenOut转账失败,退还tokenIn
+                    IERC20(tokenIn).transfer(msg.sender, amountIn);
+                    emit SwapFailed(msg.sender, "Transfer returned false");
+                    return false;
+                }
+                
+                emit SwapSuccess(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
+                return true;
+                
+            } catch Error(string memory reason) {
+                // tokenOut转账失败,退还tokenIn
+                IERC20(tokenIn).transfer(msg.sender, amountIn);
+                emit SwapFailed(msg.sender, reason);
+                return false;
+            } catch Panic(uint errorCode) {
+                // tokenOut转账Panic,退还tokenIn
+                IERC20(tokenIn).transfer(msg.sender, amountIn);
+                emit SwapFailedPanic(msg.sender, errorCode);
+                return false;
+            } catch (bytes memory errorData) {
+                // tokenOut转账其他错误,退还tokenIn
+                IERC20(tokenIn).transfer(msg.sender, amountIn);
+                emit SwapFailedCustom(msg.sender, errorData);
+                return false;
+            }
+            
+        } catch Error(string memory reason) {
+            emit SwapFailed(msg.sender, reason);
+            return false;
+        } catch Panic(uint errorCode) {
+            emit SwapFailedPanic(msg.sender, errorCode);
+            return false;
+        } catch (bytes memory errorData) {
+            emit SwapFailedCustom(msg.sender, errorData);
+            return false;
+        }
+    }
+}
+```
+
+## 9.3 练习3：自定义错误优化（⭐⭐⭐难度）
+任务：将练习1中的字符串错误全部替换为自定义错误,比较Gas消耗差异。
+
+要求：
+
+* 定义完整的自定义错误类型
+* 替换所有字符串错误
+* 在Remix中测试并比较Gas消耗
+
+参考答案：
+
+见练习1的答案（已经使用自定义错误）
+
+Gas对比测试步骤：
+
+* 创建两个版本的合约：一个使用字符串错误,一个使用自定义错误
+* 在Remix中部署两个合约
+* 分别调用会失败的函数（如取款超过余额）
+* 在控制台查看Gas消耗
+* 记录并比较差异
 
 
+## 9.4 练习4：完整的DApp错误处理（⭐⭐⭐⭐难度）
+任务：设计一个众筹合约,实现完整的错误处理系统。
 
+要求：
 
+* 使用require进行输入验证
+* 使用自定义错误提供详细信息
+* 使用try-catch处理退款过程中的异常
+* 遵循Checks-Effects-Interactions模式
+* 处理所有可能的边界情况
 
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
 
-
-
-
-
+contract Crowdfunding {
+    // ============ 自定义错误 ============
+    
+    error CampaignNotActive();
+    error CampaignAlreadyEnded();
+    error GoalNotReached(uint256 current, uint256 goal);
+    error GoalAlreadyReached();
+    error InvalidAmount(uint256 amount);
+    error Unauthorized(address caller);
+    error RefundFailed(address contributor);
+    error WithdrawalFailed();
+    error AlreadyRefunded(address contributor);
+    
+    // ============ 状态变量 ============
+    
+    address public owner;
+    uint256 public goal;
+    uint256 public deadline;
+    uint256 public totalRaised;
+    bool public ended;
+    bool public goalReached;
+    
+    mapping(address => uint256) public contributions;
+    mapping(address => bool) public refunded;
+    
+    // ============ 事件 ============
+    
+    event Contribution(address indexed contributor, uint256 amount);
+    event GoalReached(uint256 totalAmount);
+    event Withdrawal(address indexed owner, uint256 amount);
+    event Refund(address indexed contributor, uint256 amount);
+    event RefundFailed(address indexed contributor, uint256 amount, string reason);
+    
+    // ============ 修饰符 ============
+    
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized(msg.sender);
+        _;
+    }
+    
+    modifier campaignActive() {
+        if (ended) revert CampaignAlreadyEnded();
+        if (block.timestamp >= deadline) revert CampaignNotActive();
+        _;
+    }
+    
+    // ============ 构造函数 ============
+    
+    constructor(uint256 _goal, uint256 _duration) {
+        require(_goal > 0, "目标金额必须大于0");
+        require(_duration > 0, "持续时间必须大于0");
+        
+        owner = msg.sender;
+        goal = _goal;
+        deadline = block.timestamp + _duration;
+    }
+    
+    // ============ 公共函数 ============
+    
+    /**
+     * @notice 贡献资金
+     */
+    function contribute() public payable campaignActive {
+        // 1. Checks: 输入验证
+        if (msg.value == 0) revert InvalidAmount(msg.value);
+        
+        // 2. Effects: 更新状态
+        contributions[msg.sender] += msg.value;
+        totalRaised += msg.value;
+        
+        // 检查是否达到目标
+        if (!goalReached && totalRaised >= goal) {
+            goalReached = true;
+            emit GoalReached(totalRaised);
+        }
+        
+        // 3. Interactions: 触发事件
+        emit Contribution(msg.sender, msg.value);
+    }
+    
+    /**
+     * @notice 结束众筹
+     */
+    function endCampaign() public {
+        // 检查时间
+        require(block.timestamp >= deadline, "众筹尚未结束");
+        require(!ended, "众筹已经结束");
+        
+        ended = true;
+        
+        if (totalRaised >= goal) {
+            goalReached = true;
+        }
+    }
+    
+    /**
+     * @notice 提取资金（仅所有者，目标达成后）
+     */
+    function withdraw() public onlyOwner {
+        // 1. Checks
+        require(ended, "众筹尚未结束");
+        if (!goalReached) revert GoalNotReached(totalRaised, goal);
+        
+        uint256 amount = address(this).balance;
+        require(amount > 0, "没有可提取的资金");
+        
+        // 2. Effects: 清空余额（防止重入）
+        // 注意：这里简化处理，实际应该更细致
+        
+        // 3. Interactions: 转账
+        (bool success, ) = owner.call{value: amount}("");
+        if (!success) revert WithdrawalFailed();
+        
+        emit Withdrawal(owner, amount);
+    }
+    
+    /**
+     * @notice 退款（目标未达成时）
+     */
+    function refund() public {
+        // 1. Checks
+        require(ended, "众筹尚未结束");
+        if (goalReached) revert GoalAlreadyReached();
+        
+        uint256 amount = contributions[msg.sender];
+        require(amount > 0, "没有贡献");
+        
+        if (refunded[msg.sender]) revert AlreadyRefunded(msg.sender);
+        
+        // 2. Effects: 更新状态
+        contributions[msg.sender] = 0;
+        refunded[msg.sender] = true;
+        
+        // 3. Interactions: 退款
+        (bool success, ) = msg.sender.call{value: amount}("");
+        if (!success) {
+            // 如果退款失败，恢复状态
+            contributions[msg.sender] = amount;
+            refunded[msg.sender] = false;
+            revert RefundFailed(msg.sender);
+        }
+        
+        emit Refund(msg.sender, amount);
+    }
+    
+    /**
+     * @notice 批量退款（仅所有者，用于紧急情况）
+     */
+    function batchRefund(address[] memory contributors) public onlyOwner {
+        require(ended, "众筹尚未结束");
+        require(!goalReached, "目标已达成，不能退款");
+        
+        for (uint256 i = 0; i < contributors.length; i++) {
+            address contributor = contributors[i];
+            uint256 amount = contributions[contributor];
+            
+            if (amount == 0 || refunded[contributor]) {
+                continue;  // 跳过已退款或没有贡献的地址
+            }
+            
+            // 更新状态
+            contributions[contributor] = 0;
+            refunded[contributor] = true;
+            
+            // 尝试退款，使用try-catch处理异常
+            (bool success, ) = contributor.call{value: amount}("");
+            
+            if (success) {
+                emit Refund(contributor, amount);
+            } else {
+                // 退款失败，恢复状态并记录
+                contributions[contributor] = amount;
+                refunded[contributor] = false;
+                emit RefundFailed(contributor, amount, "Transfer failed");
+            }
+        }
+    }
+    
+    /**
+     * @notice 查询剩余时间
+     */
+    function timeLeft() public view returns (uint256) {
+        if (block.timestamp >= deadline) {
+            return 0;
+        }
+        return deadline - block.timestamp;
+    }
+}
+```
 
 
 
