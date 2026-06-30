@@ -42,4 +42,62 @@ contract MyToken {
     }
     
     // 7. 核心函数（见下文）
+    function transfer(address to, uint256 amount) public returns (bool) {
+        // 1. 检查接收地址
+        require(to != address(0), "Cannot transfer to zero address");
+        
+        // 2. 检查余额
+        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+        
+        // 3. 更新余额
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        
+        // 4. 触发事件
+        emit Transfer(msg.sender, to, amount);
+        
+        // 5. 返回成功
+        return true;
+    }
+    function approve(address spender, uint256 amount) public returns (bool) {
+        // 1. 检查被授权人地址
+        require(spender != address(0), "Cannot approve zero address");
+        
+        // 2. 设置授权额度
+        allowance[msg.sender][spender] = amount;
+        
+        // 3. 触发事件
+        emit Approval(msg.sender, spender, amount);
+        
+        // 4. 返回成功
+        return true;
+    }
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public returns (bool) {
+        // 1. 检查地址有效性
+        require(from != address(0), "From zero");
+        require(to != address(0), "To zero");
+        
+        // 2. 检查余额
+        require(balanceOf[from] >= amount, "Insufficient balance");
+        
+        // 3. 检查授权额度
+        require(allowance[from][msg.sender] >= amount, "Insufficient allowance");
+        
+        // 4. 执行转账
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        
+        // 5. 减少授权额度
+        allowance[from][msg.sender] -= amount;
+        
+        // 6. 触发事件
+        emit Transfer(from, to, amount);
+        
+        // 7. 返回成功
+        return true;
+    }
 }
