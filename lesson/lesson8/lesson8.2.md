@@ -684,6 +684,359 @@ contract TokenSwap {
 * 清楚地知道token是一个IERC20合约，支持哪些操作一目了然
 * 如果代币合约不符合ERC20标准，编译时就会报错
 
+## 6.2 多签钱包
+多签钱包是另一个常见的应用场景。它需要多个签名者确认后才能执行交易，使用call执行外部交易以实现灵活性。
+
+**完整示例：**
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+// 多签钱包合约：使用call执行外部交易
+contract MultiSigWallet {
+    // 自定义错误
+    error NotOwner();
+    error TxNotExists();
+    error TxAlreadyExecuted();
+    error TxAlreadyConfirmed();
+    error InsufficientConfirmations();
+    error ExecutionFailed();
+    
+    // 所有者列表
+    address[] public owners;
+    mapping(address => bool) public isOwner;
+    
+    // 所需确认数
+    uint256 public required;
+    
+    // 交易结构体
+    struct Transaction {
+        address to;        // 目标地址
+        uint256 value;     // 发送的以太币数量
+        bytes data;        // 调用数据
+        bool executed;     // 是否已执行
+        uint256 confirmations; // 确认数
+    }
+    
+    // 交易列表
+    Transaction[] public transactions;
+    
+    // 确认映射：交易ID => 所有者地址 => 是否已确认
+    mapping(uint256 => mapping(address => bool)) public confirmations;
+    
+    // 事件
+    event Deposit(address indexed sender, uint256 amount);
+    event Submit(uint256 indexed txId);
+    event Confirm(address indexed owner, uint256 indexed txId);
+    event Execute(uint256 indexed txId);
+    event ExecutionFailure(uint256 indexed txId);
+    
+    // 修饰符：只有所有者可以调用
+    modifier onlyOwner() {
+        if (!isOwner[msg.sender]) revert NotOwner();
+        _;
+    }
+    
+    // 修饰符：交易必须存在
+    modifier txExists(uint256 _txId) {
+        if (_txId >= transactions.length) revert TxNotExists();
+        _;
+    }
+    
+    // 修饰符：交易未执行
+    modifier notExecuted(uint256 _txId) {
+        if (transactions[_txId].executed) revert TxAlreadyExecuted();
+        _;
+    }
+    
+    // 构造函数：初始化所有者和所需确认数
+    constructor(address[] memory _owners, uint256 _required) {
+        require(_owners.length > 0, "Owners required");
+        require(
+            _required > 0 && _required <= _owners.length,
+            "Invalid required"
+        );
+        
+        for (uint256 i = 0; i < _owners.length; i++) {
+            address owner = _owners[i];
+            require(owner != address(0), "Invalid owner");
+            require(!isOwner[owner], "Duplicate owner");
+            
+            isOwner[owner] = true;
+            owners.push(owner);
+        }
+        
+        required = _required;
+    }
+    
+    // 接收以太币
+    receive() external payable {
+        emit Deposit(msg.sender, msg.value);
+    }
+    
+    /**
+     * @notice 提交交易
+     * @param _to 目标地址
+     * @param _value 发送的以太币数量
+     * @param _data 调用数据
+     * @return 交易ID
+     */
+    function submit(
+        address _to,
+        uint256 _value,
+        bytes memory _data
+    ) external onlyOwner returns (uint256) {
+        uint256 txId = transactions.length;
+        
+        transactions.push(Transaction({
+            to: _to,
+            value: _value,
+            data: _data,
+            executed: false,
+            confirmations: 0
+        }));
+        
+        emit Submit(txId);
+        return txId;
+    }
+    
+    /**
+     * @notice 确认交易
+     * @param _txId 交易ID
+     */
+    function confirm(uint256 _txId)
+        external
+        onlyOwner
+        txExists(_txId)
+        notExecuted(_txId)
+    {
+        if (confirmations[_txId][msg.sender]) revert TxAlreadyConfirmed();
+        
+        confirmations[_txId][msg.sender] = true;
+        transactions[_txId].confirmations += 1;
+        
+        emit Confirm(msg.sender, _txId);
+    }
+    
+    /**
+     * @notice 执行交易（使用call执行外部调用）
+     * @param _txId 交易ID
+     * @dev 使用call方法实现灵活性，可以调用任意合约的任意函数
+     */
+    function execute(uint256 _txId)
+        external
+        onlyOwner
+        txExists(_txId)
+        notExecuted(_txId)
+    {
+        Transaction storage transaction = transactions[_txId];
+        
+        // 检查确认数是否足够
+        if (transaction.confirmations < required) {
+            revert InsufficientConfirmations();
+        }
+        
+        // 标记为已执行（防止重入）
+        transaction.executed = true;
+        
+        // 使用call执行外部交易
+        // call方法提供了灵活性，可以调用任意合约的任意函数
+        (bool success, ) = transaction.to.call{value: transaction.value}(
+            transaction.data
+        );
+        
+        if (success) {
+            emit Execute(_txId);
+        } else {
+            // 执行失败，恢复状态
+            transaction.executed = false;
+            emit ExecutionFailure(_txId);
+            revert ExecutionFailed();
+        }
+    }
+}
+```
+关键点：
+
+* 通过call方法实现了灵活性，可以调用任意合约的任意函数
+* 无法提前知道目标合约的接口，所以使用call而不是接口调用
+* 严格检查返回值，确保交易执行成功
+* 在实际的多签钱包实现中，通常还会结合Gas限制、重入锁等安全措施
+
+
+## 6.3 代理合约
+代理合约是合约升级的核心技术，它使用delegatecall来实现合约逻辑的升级。
+
+**完整示例：**
+```sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+// 逻辑合约 V1：初始版本
+contract ImplementationV1 {
+    // 注意：存储布局必须与代理合约匹配
+    uint256 public value;
+    address public owner;
+    
+    /**
+     * @notice 设置值
+     * @param _value 要设置的值
+     */
+    function setValue(uint256 _value) external {
+        // 这个函数会修改调用者合约（代理合约）的storage
+        value = _value;
+        // msg.sender是原始调用者，不是代理合约
+        owner = msg.sender;
+    }
+    
+    /**
+     * @notice 获取值
+     */
+    function getValue() external view returns (uint256) {
+        return value;
+    }
+}
+
+// 逻辑合约 V2：升级版本（值翻倍）
+contract ImplementationV2 {
+    // 存储布局必须与V1和代理合约完全一致
+    uint256 public value;
+    address public owner;
+    
+    /**
+     * @notice 设置值（新逻辑：值翻倍）
+     * @param _value 要设置的值
+     */
+    function setValue(uint256 _value) external {
+        // 新逻辑：值翻倍
+        value = _value * 2;
+        owner = msg.sender;
+    }
+    
+    /**
+     * @notice 获取值
+     */
+    function getValue() external view returns (uint256) {
+        return value;
+    }
+    
+    /**
+     * @notice 新增功能：重置值
+     * @dev V1没有这个函数，升级后可以使用
+     */
+    function reset() external {
+        value = 0;
+    }
+}
+
+// 代理合约：存储数据，通过delegatecall调用逻辑合约
+contract Proxy {
+    // 存储布局必须与逻辑合约完全一致
+    address public implementation; // 逻辑合约地址
+    uint256 public value;          // 与逻辑合约的value对应
+    address public owner;           // 与逻辑合约的owner对应
+    
+    event Upgraded(address indexed newImplementation);
+    
+    // 构造函数：初始化逻辑合约地址
+    constructor(address _implementation) {
+        implementation = _implementation;
+        owner = msg.sender;
+    }
+    
+    /**
+     * @notice 升级函数：更换逻辑合约
+     * @param newImplementation 新的逻辑合约地址
+     */
+    function upgrade(address newImplementation) external {
+        require(msg.sender == owner, "Not owner");
+        implementation = newImplementation;
+        emit Upgraded(newImplementation);
+    }
+    
+    /**
+     * @notice fallback函数：将所有调用转发到逻辑合约
+     * @dev 使用delegatecall调用逻辑合约，逻辑合约的代码在代理合约的上下文中执行
+     */
+    fallback() external payable {
+        address impl = implementation;
+        require(impl != address(0), "Implementation not set");
+        
+        // 使用delegatecall调用逻辑合约
+        // 逻辑合约的代码会在本合约（代理合约）的上下文中执行
+        // 这意味着修改的是代理合约的storage，而不是逻辑合约的
+        (bool success, bytes memory returnData) = impl.delegatecall(msg.data);
+        
+        if (!success) {
+            // 如果调用失败，回滚
+            assembly {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
+        }
+        
+        // 返回数据
+        assembly {
+            return(add(returnData, 0x20), mload(returnData))
+        }
+    }
+    
+    // 接收以太币
+    receive() external payable {}
+}
+```
+
+**工作原理：**
+```sol
+1. 用户调用 Proxy.setValue(50)
+   ↓
+2. Proxy的fallback函数被触发（因为Proxy没有setValue函数）
+   ↓
+3. fallback函数使用delegatecall调用 Implementation.setValue(50)
+   ↓
+4. Implementation的代码在Proxy的上下文中执行
+   ↓
+5. 修改的是Proxy的value（不是Implementation的）
+   ↓
+6. msg.sender仍然是原始用户（不是Proxy）
+```
+**升级流程：**
+
+```sol
+V1时期：
+- Proxy.value = 0
+- 调用setValue(50) → Proxy.value = 50（V1逻辑：直接赋值）
+
+升级到V2：
+- upgrade(V2地址) → 逻辑切换，但Proxy.value保持50
+
+V2时期：
+- 调用setValue(50) → Proxy.value = 100（V2逻辑：50*2=100）
+- 调用reset() → Proxy.value = 0（V2新功能）
+```
+
+关键点：
+
+* 通过delegatecall实现了调用，并且保持了msg.sender不变
+* 在逻辑合约中，msg.sender仍然是原始的调用者，而不是代理合约
+* 这对于权限控制非常重要
+* 存储布局必须兼容，如果逻辑合约的存储布局发生变化，可能导致数据损坏
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
