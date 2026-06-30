@@ -599,6 +599,196 @@ totalSupply = _initialSupply * 10**_decimals;
 
 // 这表示1000个代币，但实际存储的是最小单位
 ```
+**为什么从零地址触发Transfer事件？**
+```sol
+emit Transfer(address(0), msg.sender, totalSupply);
+```
+* address(0)表示代币是新铸造的
+* 这是ERC20标准的约定
+* 区块链浏览器会识别这是初始分配
+* 与销毁代币（to = address(0)）相对应
+
+## 4.4 transfer函数实现
+```sol
+function transfer(address to, uint256 amount) public returns (bool) {
+    // 1. 检查接收地址
+    require(to != address(0), "Cannot transfer to zero address");
+    
+    // 2. 检查余额
+    require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+    
+    // 3. 更新余额
+    balanceOf[msg.sender] -= amount;
+    balanceOf[to] += amount;
+    
+    // 4. 触发事件
+    emit Transfer(msg.sender, to, amount);
+    
+    // 5. 返回成功
+    return true;
+}
+```
+实现要点：
+
+**要点1：零地址检查**
+```sol
+require(to != address(0), "Cannot transfer to zero address");
+```
+零地址（0x0000000000000000000000000000000000000000）是特殊地址：
+
+* 发送到零地址的代币永久丢失
+* 类似于"黑洞地址"
+* 必须防止误操作
+
+**要点2：余额检查**
+```sol
+require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+```
+防止透支：
+
+* 确保发送者有足够代币
+* 防止余额变为负数
+* Solidity 0.8.0+会自动检查下溢
+
+**要点3：更新顺序**
+```sol
+balanceOf[msg.sender] -= amount;  // 先减
+balanceOf[to] += amount;          // 后加
+```
+这是CEI模式（Checks-Effects-Interactions）的应用：
+
+* 先更新状态
+* 再进行外部交互
+* 防止重入攻击
+
+**要点4：触发事件**
+```sol
+emit Transfer(msg.sender, to, amount);
+```
+事件的作用：
+
+* 钱包监听事件更新余额
+* 区块链浏览器显示交易记录
+* DApp跟踪代币流动
+* 前端实时通知用户
+
+
+## 4.5 approve函数实现
+```sol
+function approve(address spender, uint256 amount) public returns (bool) {
+    // 1. 检查被授权人地址
+    require(spender != address(0), "Cannot approve zero address");
+    
+    // 2. 设置授权额度
+    allowance[msg.sender][spender] = amount;
+    
+    // 3. 触发事件
+    emit Approval(msg.sender, spender, amount);
+    
+    // 4. 返回成功
+    return true;
+}
+```
+关键特性：
+
+**特性1：覆盖式授权**
+```sol
+// 第一次授权
+approve(uniswap, 100);  // allowance[Alice][Uniswap] = 100
+
+// 第二次授权（覆盖）
+approve(uniswap, 200);  // allowance[Alice][Uniswap] = 200（不是300）
+```
+新授权会完全覆盖旧授权，不是累加。
+
+**特性2：取消授权**
+```sol
+// 取消授权：设置为0
+approve(uniswap, 0);  // allowance[Alice][Uniswap] = 0
+```
+
+**特性3：不转移代币**
+```sol
+// 执行approve后
+// 代币仍然在授权人账户中
+// 只是设置了一个"额度"
+```
+
+## 4.6 transferFrom函数实现
+```sol
+function transferFrom(
+    address from,
+    address to,
+    uint256 amount
+) public returns (bool) {
+    // 1. 检查地址有效性
+    require(from != address(0), "From zero");
+    require(to != address(0), "To zero");
+    
+    // 2. 检查余额
+    require(balanceOf[from] >= amount, "Insufficient balance");
+    
+    // 3. 检查授权额度
+    require(allowance[from][msg.sender] >= amount, "Insufficient allowance");
+    
+    // 4. 执行转账
+    balanceOf[from] -= amount;
+    balanceOf[to] += amount;
+    
+    // 5. 减少授权额度
+    allowance[from][msg.sender] -= amount;
+    
+    // 6. 触发事件
+    emit Transfer(from, to, amount);
+    
+    // 7. 返回成功
+    return true;
+}
+```
+关键理解：
+
+**谁在调用？**
+```sol
+// Alice授权Uniswap使用500个代币
+alice.approve(uniswap, 500);
+
+// Uniswap合约调用transferFrom
+// msg.sender = Uniswap合约地址
+uniswap.transferFrom(alice, pool, 300);
+
+// 检查：allowance[alice][uniswap] >= 300
+// msg.sender是Uniswap，所以检查的是Uniswap的授权额度
+```
+三方关系：
+
+```sol
+Alice（授权人）
+    ↓ 授权
+Uniswap（被授权人/调用者）
+    ↓ 执行转账
+Pool（接收者）
+```
+**检查逻辑：**
+```sol
+// 从from账户转出，需要检查：
+// 1. from的余额是否足够
+require(balanceOf[from] >= amount);
+
+// 2. msg.sender（调用者）是否被from授权
+require(allowance[from][msg.sender] >= amount);
+
+// 这两个条件都满足才能转账
+```
+
+
+
+
+
+
+
+
+
+
 
 
 
