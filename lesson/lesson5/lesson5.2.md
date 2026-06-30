@@ -245,7 +245,7 @@ contract TokenWithMintBurn {
 
 * 打开Remix IDE：https://remix.ethereum.org
 * 在File Explorer中创建新文件：MyToken.sol
-* 复制完整的合约代码到文件中[MyToken.sol 代码](./lesson5.1.md#4.1 合约结构设计)
+* 复制完整的合约代码到文件中[MyToken.sol 代码](lesson5.1.md#4.1)
 
 
 步骤2：编译合约
