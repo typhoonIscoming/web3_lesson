@@ -195,7 +195,7 @@ function burn(uint amount) external {
 
 在Remix上编译好`ERC20`合约，在部署栏输入构造函数的参数，`name_`和`symbol_`都设为`WTF`，然后点击`transact`键进行部署。
 
-![部署流程](./assets/1.png)
+![部署流程](https://www.wtf.academy/_next/image?url=https%3A%2F%2Fstatic.wtf.academy%2Fimage%2F8caed510bdf3ec531c17469949f8be70.png&w=3840&q=75)
 
 
 
