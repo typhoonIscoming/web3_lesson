@@ -197,21 +197,29 @@ function burn(uint amount) external {
 
 ![部署流程](https://www.wtf.academy/_next/image?url=https%3A%2F%2Fstatic.wtf.academy%2Fimage%2F8caed510bdf3ec531c17469949f8be70.png&w=3840&q=75)
 
+这样，我们就创建好了`WTF`代币。我们需要运行`mint()`函数来给自己铸造一些代币。点开`Deployed Contract`中的`ERC20`合约，在`mint`函数那一栏输入`100`并点击`mint`按钮，为自己铸造`100`个WTF代币。
+
+可以点开右侧的`Debug`按钮，具体查看下面的`logs`。
+
+里面包含四个关键信息：
+
+* 事件`Transfer`
+* 铸币地址`0x0000000000000000000000000000000000000000`
+* 接收地址`0x5B38Da6a701c568545dCfcB03FcB875f56beddC4`
+* 代币数额`100`
+
+![logs](https://www.wtf.academy/_next/image?url=https%3A%2F%2Fstatic.wtf.academy%2Fimage%2F06f67cb79871c4b13ec57291656a6ca8.png&w=3840&q=75)
+
+我们利用`balanceOf()`函数来查询账户余额。输入我们当前的账户，可以看到余额变为`100`，铸造成功。
+
+账户信息如图左侧，右侧标注为函数执行的具体信息。
+
+![balanceOf()查询余额](https://www.wtf.academy/_next/image?url=https%3A%2F%2Fstatic.wtf.academy%2Fimage%2Fc6813a9ae48dcb1d96711fc9f4d9aa51.png&w=3840&q=75)
 
 
+# 总结
 
-
-
-
-
-
-
-
-
-
-
-
-
+在这一讲，我们学习了以太坊上的`ERC20`标准及其实现，并且发行了我们的测试代币。2015年底提出的`ERC20`代币标准极大的降低了以太坊上发行代币的门槛，并开启了`ICO`大时代。在投资时，仔细阅读项目的代币合约，可以有效避开貔貅，增加投资成功率。
 
 
 
