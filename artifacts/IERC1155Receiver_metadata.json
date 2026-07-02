@@ -1,0 +1,162 @@
+{
+	"compiler": {
+		"version": "0.8.35+commit.47b9dedd"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "operator",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "from",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256[]",
+						"name": "ids",
+						"type": "uint256[]"
+					},
+					{
+						"internalType": "uint256[]",
+						"name": "values",
+						"type": "uint256[]"
+					},
+					{
+						"internalType": "bytes",
+						"name": "data",
+						"type": "bytes"
+					}
+				],
+				"name": "onERC1155BatchReceived",
+				"outputs": [
+					{
+						"internalType": "bytes4",
+						"name": "",
+						"type": "bytes4"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "operator",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "from",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "id",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "value",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bytes",
+						"name": "data",
+						"type": "bytes"
+					}
+				],
+				"name": "onERC1155Received",
+				"outputs": [
+					{
+						"internalType": "bytes4",
+						"name": "",
+						"type": "bytes4"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "interfaceId",
+						"type": "bytes4"
+					}
+				],
+				"name": "supportsInterface",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"details": "ERC1155接收合约，要接受ERC1155的安全转账，需要实现这个合约",
+			"kind": "dev",
+			"methods": {
+				"onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": {
+					"details": "接受ERC1155批量安全转账`safeBatchTransferFrom`  需要返回 0xbc197c81 或 `bytes4(keccak256(\"onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)\"))`"
+				},
+				"onERC1155Received(address,address,uint256,uint256,bytes)": {
+					"details": "接受ERC1155安全转账`safeTransferFrom`  需要返回 0xf23a6e61 或 `bytes4(keccak256(\"onERC1155Received(address,address,uint256,uint256,bytes)\"))`"
+				},
+				"supportsInterface(bytes4)": {
+					"details": "如果合约实现了查询的`interfaceId`，则返回true 规则详见：https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[EIP section]"
+				}
+			},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/erc1155/IERC1155Receiver.sol": "IERC1155Receiver"
+		},
+		"evmVersion": "osaka",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/erc1155/IERC1155Receiver.sol": {
+			"keccak256": "0xfdf14201395a284b6662d7aa443085bfe0c2758d949f4dac1f1f5434c70610fc",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://33ca9fc153b8c9127c5ee6d631fa8948ff08555473e318b4fca4379ee3eca89b",
+				"dweb:/ipfs/QmaT9EzxkFSKRxtmiLLoZS8bdB3mV14m6j2KPWWNQwg6cT"
+			]
+		},
+		"contracts/erc1155/IERC165.sol": {
+			"keccak256": "0x0f5ca5795e32d799a20314e301141685428916187124f79ecba42c3bc9eca3d4",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://231effbf6abbe141341b8b05b3b55a132ed0f0d61a9917d0e833b22b72a12102",
+				"dweb:/ipfs/QmdfmxZiKtBpshdbQQ1Xngrufi4Uy6fAdgZ2PrvTDCvLiw"
+			]
+		}
+	},
+	"version": 1
+}

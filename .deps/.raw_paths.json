@@ -5,5 +5,10 @@
   "@openzeppelin/contracts@5.6.1/utils/Panic.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/Panic.sol",
   "@openzeppelin/contracts@5.6.1/utils/math/SafeCast.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/math/SafeCast.sol",
   "@openzeppelin/contracts@5.6.1/utils/math/SignedMath.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/math/SignedMath.sol",
-  "@openzeppelin/contracts@5.6.1/utils/Bytes.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/Bytes.sol"
+  "@openzeppelin/contracts@5.6.1/utils/Bytes.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/Bytes.sol",
+  "contracts@0.4.0/34_ERC721/IERC165.sol": ".deps/npm/contracts@0.4.0/34_ERC721/IERC165.sol",
+  "contracts@0.4.0/IERC165.sol": ".deps/npm/contracts@0.4.0/IERC165.sol",
+  "contracts@0.4.0/erc1155/IERC1155.sol": ".deps/npm/contracts@0.4.0/erc1155/IERC1155.sol",
+  "contracts@0.4.0/34_ERC721/String.sol": ".deps/npm/contracts@0.4.0/34_ERC721/String.sol",
+  "contracts@0.4.0/String.sol": ".deps/npm/contracts@0.4.0/String.sol"
 }
