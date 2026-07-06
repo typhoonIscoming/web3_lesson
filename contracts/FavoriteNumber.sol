@@ -19,4 +19,22 @@ contract FavoriteNumber{
     function getNumber(string memory name) public view returns (uint256) {
         return nameToFavoriteNumber[name];
     }
+
+    function getContractAddress() public view returns (address) {
+        return address(this);
+    }
+    function addressToUint(address addr) public pure returns (uint160) {
+        return uint160(addr);
+    }
+    // 正确的字符串比较方法：比较哈希值
+    function compareStrings(
+        string memory a,
+        string memory b
+    ) public pure returns (bool) {
+        return keccak256(bytes(a)) == keccak256(bytes(b));
+    }
+    // 获取字符串长度（通过转换为bytes）
+    function getStringLength(string calldata str) public pure returns (uint) {
+        return bytes(str).length;
+    }
 }
