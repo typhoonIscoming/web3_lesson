@@ -1,6 +1,6 @@
 {
 	"compiler": {
-		"version": "0.8.18+commit.87f61d96"
+		"version": "0.8.35+commit.47b9dedd"
 	},
 	"language": "Solidity",
 	"output": {
@@ -207,7 +207,7 @@
 		"compilationTarget": {
 			"contracts/3_Ballot.sol": "Ballot"
 		},
-		"evmVersion": "paris",
+		"evmVersion": "osaka",
 		"libraries": {},
 		"metadata": {
 			"bytecodeHash": "ipfs"
