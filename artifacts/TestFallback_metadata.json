@@ -1,0 +1,50 @@
+{
+	"compiler": {
+		"version": "0.8.19+commit.7dd6d404"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"stateMutability": "payable",
+				"type": "receive"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/TestFallback.sol": "TestFallback"
+		},
+		"evmVersion": "paris",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/TestFallback.sol": {
+			"keccak256": "0x2472a6cbbe1aedb4d0e6427ca9a40502a1f349a31ce57d59a1ddd1185e721b25",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://9aa8b77ececf072785e8e934900cfdaff552c83466f35fd0d3026ea9802462dd",
+				"dweb:/ipfs/QmNtiRGVoDvQHBWe3JuJxxrFqfv87nQDT8MRALN1uGa42n"
+			]
+		}
+	},
+	"version": 1
+}

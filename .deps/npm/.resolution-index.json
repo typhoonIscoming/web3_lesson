@@ -49,14 +49,6 @@
       }
     }
   },
-  "contracts/TipJar.sol": {
-    "__sources__": {
-      "contracts/TipJar.sol": {
-        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.18;\n\n// 创建一个合约部署到虚拟环境以太坊上\n// \ncontract TipJar {\n    address public owner;\n\n    constructor() {\n        owner = msg.sender;\n    }\n\n    modifier onlyOwner{\n        require(msg.sender == owner, \"you are not owner\");\n        _; // 下划线代表是别的方法的逻辑\n    }\n\n    function tip() public payable {\n        // 转账金额必须大于0\n        require(msg.value > 0, \"Tip amount must be greater than 0\");\n    }\n    // 提现\n    function withDraw() public onlyOwner {\n        // 这里的withDraw是一个public方法，意味着任何人都可以调用这个方法\n        // 所以这里加一个限制条件\n        // 这里也可以使用装饰器来完成这个操作, 定义一个装饰器onlyOwner，再将onlyOwner装饰器\n        // 放在定义的方法后面，就可以执行拦截操作\n        // require(msg.sender == owner, \"you are not owner\");\n        // 1、查询余额（solidity中有内置方法）\n        // 2、将余额提现到owner中\n       uint256 contractBalance = address(this).balance;\n       // 这里可以加入一些限制,只有余额大于0才可以执行转账\n       // solidity从0.7.0开始支持unicode，第二个参数就可以传任意类型的utf-8字符\n       require(contractBalance > 0, unicode\"这里没有可提现的余额\");\n       payable(owner).transfer(contractBalance);\n    }\n    // 获取余额\n    function getBalance() public view returns (uint256) {\n        return address(this).balance;\n    }\n}\n\n",
-        "file": "contracts/TipJar.sol"
-      }
-    }
-  },
   "@openzeppelin/contracts/utils/math/Math.sol": {
     "../Panic.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/Panic.sol",
     "./SafeCast.sol": ".deps/npm/@openzeppelin/contracts@5.6.1/utils/math/SafeCast.sol"
@@ -196,6 +188,22 @@
       "contracts/FavoriteNumber.sol": {
         "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.18;\n\ncontract FavoriteNumber{\n    /**\n        实现的功能：\n        将名字和他喜欢的数字一一对应起来\n    */\n    mapping (string => uint256) private nameToFavoriteNumber;\n\n    // 定义public，让这个方法可以在外部调用\n    // 这里定义memory是因为string是一个动态大小的类型，所以使用memory指定这个参数在函数执行过程中放在内存里面\n    // uint256是一个简单的值类型，大小是固定的\n    function createOrUpdateNumber(string memory name, uint256 number) public {\n        nameToFavoriteNumber[name] = number;\n    }\n    // 加上view这个关键字，表示这个函数只是读取数据，不会做任何修改\n    // 如果是pure，那么这个函数既不能修改也不能读取，但是这个函数读取了mapping的数据结构\n    function getNumber(string memory name) public view returns (uint256) {\n        return nameToFavoriteNumber[name];\n    }\n\n    function getContractAddress() public view returns (address) {\n        return address(this);\n    }\n    function addressToUint(address addr) public pure returns (uint160) {\n        return uint160(addr);\n    }\n    // 正确的字符串比较方法：比较哈希值\n    function compareStrings(\n        string memory a,\n        string memory b\n    ) public pure returns (bool) {\n        return keccak256(bytes(a)) == keccak256(bytes(b));\n    }\n    // 获取字符串长度（通过转换为bytes）\n    function getStringLength(string calldata str) public pure returns (uint) {\n        return bytes(str).length;\n    }\n}\n",
         "file": "contracts/FavoriteNumber.sol"
+      }
+    }
+  },
+  "contracts/TipJar.sol": {
+    "__sources__": {
+      "contracts/TipJar.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.18;\n\n// 创建一个合约部署到虚拟环境以太坊上\n// \ncontract TipJar {\n    address public owner;\n\n    constructor() {\n        owner = msg.sender;\n    }\n\n    modifier onlyOwner{\n        require(msg.sender == owner, \"you are not owner\");\n        _; // 下划线代表是别的方法的逻辑\n    }\n\n    function tip() public payable {\n        // 转账金额必须大于0\n        require(msg.value > 0, \"Tip amount must be greater than 0\");\n    }\n    // 提现\n    function withDraw() public onlyOwner {\n        // 这里的withDraw是一个public方法，意味着任何人都可以调用这个方法\n        // 所以这里加一个限制条件\n        // 这里也可以使用装饰器来完成这个操作, 定义一个装饰器onlyOwner，再将onlyOwner装饰器\n        // 放在定义的方法后面，就可以执行拦截操作\n        // require(msg.sender == owner, \"you are not owner\");\n        // 1、查询余额（solidity中有内置方法）\n        // 2、将余额提现到owner中\n       uint256 contractBalance = address(this).balance;\n       // 这里可以加入一些限制,只有余额大于0才可以执行转账\n       // solidity从0.7.0开始支持unicode，第二个参数就可以传任意类型的utf-8字符\n       require(contractBalance > 0, unicode\"这里没有可提现的余额\");\n       payable(owner).transfer(contractBalance);\n    }\n    // 获取余额\n    function getBalance() public view returns (uint256) {\n        return address(this).balance;\n    }\n}\n\n",
+        "file": "contracts/TipJar.sol"
+      }
+    }
+  },
+  "contracts/TestFallback.sol": {
+    "__sources__": {
+      "contracts/TestFallback.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.19;\n\ncontract SpecialPayable {\n    event Received(address sender, uint256 amount);\n    event Fallback(address sender, uint256 amount, bytes data);\n    \n    // receive：接收纯ETH转账（无data）\n    receive() external payable {\n        emit Received(msg.sender, msg.value);\n    }\n    \n    // fallback：调用不存在的函数或带data的转账\n    fallback() external payable {\n        emit Fallback(msg.sender, msg.value, msg.data);\n    }\n}",
+        "file": "contracts/TestFallback.sol"
       }
     }
   }
