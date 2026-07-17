@@ -14,7 +14,7 @@
 
 如果你以前做过前端部署，可能经历过这样的痛苦流程：买服务器、安装 Node.js、配置 Nginx 反向代理、申请 SSL 证书、设置 SSH 密钥、编写 CI/CD 脚本……这一套下来，半天时间就没了。
 
-![传统部署 vs Vercel 部署对比图](./docs/deploy-compare.svg)
+![传统部署 vs Vercel 部署对比图](https://github.com/MetaNodeAcademy/nextjs-courses/blob/main/course16/docs/deploy-compare.svg)
 
 但在 Next.js 的世界里，这一切都成为了历史。因为 Next.js 背后的母公司 **Vercel**，为我们提供了一个堪称“前端云基础设施”的平台。它可以说是部署领域的“苹果”——**极致简单，但又极其强大**。
 
