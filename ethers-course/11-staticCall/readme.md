@@ -7,7 +7,7 @@
 
 在以太坊上发交易需要付昂贵的 `gas`，并且有失败的风险，发送失败的交易并不会把 `gas` 返还给你。因此，在发送交易前知道哪些交易可能会失败非常重要。如果你用过 `metamask` 小狐狸钱包，那对下图不会陌生。
 
-![](static/PI3BbfBzPok2aQxP8Vxc9HIXnmc.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/11.StaticCall/static/PI3BbfBzPok2aQxP8Vxc9HIXnmc.png)
 
 如果你的交易将失败，小狐狸会告诉你 `this transaction may fail`，翻译过来就是“这笔交易可能失败”。当用户看到这个红字提示，就知道要取消这笔交易了，除非他想尝尝失败的滋味。
 
@@ -73,7 +73,7 @@ const balanceDAI = await contractDAI.balanceOf(address)
 console.log(`DAI持仓: ${ethers.formatEther(balanceDAI)}\n`)
 ```
 
-![](static/TPXubyFhDopmcpxH4Xgc5LnZn3b.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/11.StaticCall/static/TPXubyFhDopmcpxH4Xgc5LnZn3b.png)
 
 4. 用 `staticCall` 调用 `transfer()` 函数，将 `from` 参数填为 Vitalik 地址，模拟 Vitalik 转账 `10000 DAI`。这笔交易将成功，因为 Vitalik 钱包有充足的 `DAI`。
 
@@ -84,7 +84,7 @@ const tx = await contractDAI.transfer.staticCall("vitalik.eth", ethers.parseEthe
 console.log(`交易会成功吗？：`, tx)
 ```
 
-![](static/H5a5bANejozP4XxAfdncHdB1nIc.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/11.StaticCall/static/H5a5bANejozP4XxAfdncHdB1nIc.png)
 
 5. 用 `staticCall` 调用 `transfer()` 函数，将 `from` 参数填为测试钱包地址，模拟转账 `10000 DAI`。这笔交易将失败，报错，并返回原因 `Dai/insufficient-balance`。
 
@@ -94,7 +94,7 @@ const tx2 = await contractDAI.transfer.staticCall("vitalik.eth", ethers.parseEth
 console.log(`交易会成功吗？：`, tx2)
 ```
 
-![](static/FwkXbRaPnoTFDNxCNiocTOEdnGf.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/11.StaticCall/static/FwkXbRaPnoTFDNxCNiocTOEdnGf.png)
 
 完整代码
 
