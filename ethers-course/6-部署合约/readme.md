@@ -206,7 +206,7 @@ interface IERC20 {
 
 编译使用在线 IDEA([https://remix.ethereum.org/](https://remix.ethereum.org/))
 
-![](static/BCjibVrYqoz3paxXc3ccuHwsnib.png)
+![]( https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/06.%E9%83%A8%E7%BD%B2%E5%90%88%E7%BA%A6/static/BCjibVrYqoz3paxXc3ccuHwsnib.png)
 
 3. 创建合约工厂 `ContractFactory` 实例。
 
@@ -233,7 +233,7 @@ await contractERC20.waitForDeployment()
 console.log("合约已上链")
 ```
 
-![](static/ZIujbY5Cho4jaKxg2BFcCvIAnse.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/raw/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/06.%E9%83%A8%E7%BD%B2%E5%90%88%E7%BA%A6/static/ZIujbY5Cho4jaKxg2BFcCvIAnse.png)
 
 5. 在合约上链后，调用 `name()` 和 `symbol()` 函数打印代币名称和代号，然后调用 `mint()` 函数给自己铸造 `10,000` 枚代币。
 
@@ -249,7 +249,7 @@ console.log(`mint后地址中代币余额: ${await contractERC20.balanceOf(walle
 console.log(`代币总供给: ${await contractERC20.totalSupply()}`)
 ```
 
-![](static/QAqcb55Hmo3Qy5xb29WcnKfQnDb.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/06.%E9%83%A8%E7%BD%B2%E5%90%88%E7%BA%A6/static/QAqcb55Hmo3Qy5xb29WcnKfQnDb.png)
 
 6. 调用 `transfer()` 函数，给 Vitalik 转账 `1,000` 枚代币。
 
@@ -262,6 +262,6 @@ await tx.wait()
 console.log(`Vitalik钱包中的代币余额: ${await contractERC20.balanceOf("vitalik.eth")}`)
 ```
 
-![](static/KWQZb3EW6oNxAXx7GGrcsiHInSc.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/06.%E9%83%A8%E7%BD%B2%E5%90%88%E7%BA%A6/static/KWQZb3EW6oNxAXx7GGrcsiHInSc.png)
 
 这一讲我们介绍了 ethers.js 中的合约工厂 `ContractFactory` 类型，利用它部署了一个 `ERC20` 代币合约，并给 Vitalik 转账了 `1,000` 枚代币。
