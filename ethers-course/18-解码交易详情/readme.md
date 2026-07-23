@@ -7,11 +7,11 @@
 
 下面是一个转账 `ERC20` 代币的未决交易，你可以在<u>etherscan</u>上查看交易详情：
 
-![](static/CB2UbNY0KopAtGxyMUScVCBBnnf.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/18.%20%E8%A7%A3%E7%A0%81%E4%BA%A4%E6%98%93%E8%AF%A6%E6%83%85/static/CB2UbNY0KopAtGxyMUScVCBBnnf.png)
 
 红框中是这个交易的 `input data`，看似杂乱无章的十六进制数据，实际上编码了这笔交易的内容：包括调用的函数，以及输入的参数。我们在 etherscan 点击 **Decode Input Data** 按钮，就可以解码这段数据：
 
-![](static/MoXVbwnxDoUZ7txS1cBc9InTnnc.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/18.%20%E8%A7%A3%E7%A0%81%E4%BA%A4%E6%98%93%E8%AF%A6%E6%83%85/static/MoXVbwnxDoUZ7txS1cBc9InTnnc.png)
 
 解码之后，我们可以看到这笔交易调用的函数以及输入的参数。
 
@@ -142,7 +142,7 @@ console
 
 1. 交易参数解码：
 
-![](static/UDFVbucVToZFuQxqpEYca7MEndE.png)
+![](https://github.com/MetaNodeAcademy/Advanced4-frontend-upgrade/blob/main/Web3%E5%BC%80%E5%8F%91%E5%BA%93/ethers.js/18.%20%E8%A7%A3%E7%A0%81%E4%BA%A4%E6%98%93%E8%AF%A6%E6%83%85/static/UDFVbucVToZFuQxqpEYca7MEndE.png)
 
 ## **总结**
 
