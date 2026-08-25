@@ -74,7 +74,7 @@ Uniswap 到目前已经迭代了好几个版本，下面是各个版本的发展
 
 [uniawap v3白皮书](https://github.com/adshao/publications/blob/master/uniswap/dive-into-uniswap-v3-whitepaper/README_zh.md)
 
-[](https://github.com/WTFAcademy/WTF-Dapp/blob/main/P002_WhatIsUniswap/img/uniswapv3.jpg)
+![](https://github.com/WTFAcademy/WTF-Dapp/blob/main/P002_WhatIsUniswap/img/uniswapv3.jpg)
 
 - Uniswap v3-periphery
     面向用户的接口代码，如头寸管理、swap 路由等功能，Uniswap 的前端界面与 periphery 合约交互，主要包含三个合约：
@@ -92,6 +92,79 @@ Uniswap 到目前已经迭代了好几个版本，下面是各个版本的发展
 1. 部署交易池；
 2. 创建/添加/减少流动性；
 3. swap。
+
+其中 1 和 2 都是合约提供给 LP 操作的功能，通过部署交易池和管理流动性来提供和管理流动性。而 3 则是提供给普通用户使用 Uniswap 的核心功能（甚至可以说是唯一的功能）swap，也就是交易。接下来我们将依次讲解 Uniswap 中的相关代码。
+
+## 部署交易池
+
+在 Uniswap V3 中，通过合约 [UniswapV3Pool](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L30) 来定义一个交易池子，Uniswap 最核心的交易功能在最底层就是调用了该合约的 swap 方法。
+
+而不同的交易对，以及不同的费率和价格区间（后面会具体讲到 tickSpacing）都会部署不同的 UniswapV3Pool 合约实例来负责交易。部署交易池则是针对某一对 token 以及指定费率的和价格区间来部署一个对应的交易池，当部署完成后再次出现同样条件下的交易池则不再需要重复部署了。
+
+部署交易池调用的是 NonfungiblePositionManager 合约的 [createAndInitializePoolIfNecessary](https://github.com/Uniswap/v3-periphery/blob/main/contracts/base/PoolInitializer.sol#L13)，参数为：
+
+- token0：token0 的地址，需要小于 token1 的地址且不为零地址；
+- token1：token1 的地址；
+- fee：以 1,000,000 为基底的手续费费率，Uniswap v3 前端界面支持四种手续费费率（0.01%，0.05%、0.30%、1.00%），对于一般的交易对推荐 0.30%，fee 取值即 3000；
+- sqrtPriceX96：当前交易对价格的算术平方根左移 96 位的值，目的是为了方便合约中的计算。
+
+代码为：
+```sol
+/// @inheritdoc IPoolInitializer
+function createAndInitializePoolIfNecessary(
+    address token0,
+    address token1,
+    uint24 fee,
+    uint160 sqrtPriceX96
+) external payable override returns (address pool) {
+    require(token0 < token1);
+    pool = IUniswapV3Factory(factory).getPool(token0, token1, fee);
+
+    if (pool == address(0)) {
+        pool = IUniswapV3Factory(factory).createPool(token0, token1, fee);
+        IUniswapV3Pool(pool).initialize(sqrtPriceX96);
+    } else {
+        (uint160 sqrtPriceX96Existing, , , , , , ) = IUniswapV3Pool(pool).slot0();
+        if (sqrtPriceX96Existing == 0) {
+            IUniswapV3Pool(pool).initialize(sqrtPriceX96);
+        }
+    }
+}
+```
+逻辑非常直观，首先将 token0，token1 和 fee 作为三元组取出交易池的地址 pool，如果取出的是零地址则创建交易池然后初始化，否则继续判断是否初始化过（当前价格），未初始化过则初始化。
+
+我们分别看创建交易池的方法和初始化交易池的方法。
+
+创建交易池
+
+创建交易池调用的是 UniswapV3Factory 合约的 [createPool](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Factory.sol#L35)，参数为：
+
+- token0：token0 的地址
+- token1 地址：token1 的地址；
+- fee：手续费费率。
+
+代码为：
+```sol
+/// @inheritdoc IUniswapV3Factory
+function createPool(
+    address token0,
+    address token1,
+    uint24 fee
+) external override noDelegateCall returns (address pool) {
+    require(token0 != token1);
+    (address token0, address token1) = token0 < token1 ? (token0, token1) : (token1, token0);
+    require(token0 != address(0));
+    int24 tickSpacing = feeAmountTickSpacing[fee];
+    require(tickSpacing != 0);
+    require(getPool[token0][token1][fee] == address(0));
+    pool = deploy(address(this), token0, token1, fee, tickSpacing);
+    getPool[token0][token1][fee] = pool;
+    // populate mapping in the reverse direction, deliberate choice to avoid the cost of comparing addresses
+    getPool[token1][token0][fee] = pool;
+    emit PoolCreated(token0, token1, fee, tickSpacing, pool);
+}
+```
+
 
 
 
