@@ -74,8 +74,24 @@ Uniswap 到目前已经迭代了好几个版本，下面是各个版本的发展
 
 [uniawap v3白皮书](https://github.com/adshao/publications/blob/master/uniswap/dive-into-uniswap-v3-whitepaper/README_zh.md)
 
+[](https://github.com/WTFAcademy/WTF-Dapp/blob/main/P002_WhatIsUniswap/img/uniswapv3.jpg)
 
+- Uniswap v3-periphery
+    面向用户的接口代码，如头寸管理、swap 路由等功能，Uniswap 的前端界面与 periphery 合约交互，主要包含三个合约：
+        + NonfungiblePositionManager.sol：对应头寸管理功能，包含交易池（又称为流动性池或池子，后文统一用交易池表示）创建以及流动性的添加删除；
+        + NonfungibleTokenPositionDescriptor.sol：对头寸的描述信息；
+        + SwapRouter.sol：对应 swap 路由的功能，包含单交易池 swap 和多交易池 swap。
 
+- Uniswap v3-core
+    Uniswap v3 的核心代码，实现了协议定义的所有功能，外部合约可直接与 core 合约交互，主要包含三个合约；
+        + UniswapV3Factory.sol：工厂合约，用来创建交易池，设置 Owner 和手续费等级；
+        + UniswapV3PoolDeployer.sol：工厂合约的基类，封装了部署交易池合约的功能；
+        + UniswapV3Pool.sol：交易池合约，持有实际的 Token，实现价格和流动性的管理，以及在当前交易池中 swap 的功能。
+
+我们主要解析核心流程，包括以下：
+1. 部署交易池；
+2. 创建/添加/减少流动性；
+3. swap。
 
 
 
