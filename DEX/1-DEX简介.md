@@ -69,7 +69,10 @@ Uniswap 到目前已经迭代了好几个版本，下面是各个版本的发展
 
 2025年1月Uniswap V4 发布，V4 版本在算法上并没有改变，依然还是采用集中流动性，但通过 Hooks 实现了可定制的池，单例合约和闪电记账大幅度降低了 gas 成本，对原生 ETH 的支持也同样减少了 gas，还有对动态费用的支持、ERC1155 的支持等，都大大提高了 Uniswap 的灵活性、可扩展性。
 
+# Uniswap V3 代码解析
+如上所说，Uniswap 核心就是要基于 CPMM 来实现一个自动化做市商，除了用户调用的交易合约外，还需要有提供给 LP 管理流动性池子的合约，以及对流动性的管理。这些功能在不同的合约中实现，在 Uniswap 的架构中，Uniswap V3 的合约大概被分为两类，分别存储在不同的仓库中：
 
+[uniawap v3白皮书](https://github.com/adshao/publications/blob/master/uniswap/dive-into-uniswap-v3-whitepaper/README_zh.md)
 
 
 
