@@ -961,16 +961,271 @@ if (liquidityDelta < 0) {
 
 swap 也就指交易，是 Uniswap 中最常用的也是最核心的功能。对应 https://app.uniswap.org/swap 中的相关操作，接下来让我们看看 Uniswap 的合约是如何实现 swap 的。
 
+`SwapRouter` 合约包含了以下四个交换代币的方法：
 
+- exactInput：多池交换，用户指定输入代币数量，尽可能多地获得输出代币；
+- exactInputSingle：单池交换，用户指定输入代币数量，尽可能多地获得输出代币；
+- exactOutput：多池交换，用户指定输出代币数量，尽可能少地提供输入代币；
+- exactOutputSingle：单池交换，用户指定输出代币数量，尽可能少地提供输入代币。
 
+这里分成"指定输入代币数量"和"指定输出代币数量"分别介绍。
 
+## 指定输入代币数量
+[exactInput](https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol#L132) 方法负责多池交换，指定 swap 路径以及输入代币数量，尽可能多地获得输出代币。
 
+参数如下：
+```sol
+struct ExactInputParams {
+    bytes path; // swap 路径，可以解析成一个或多个交易池
+    address recipient; // 接收者地址
+    uint256 deadline; // 过期的区块号
+    uint256 amountIn; // 输入代币数量
+    uint256 amountOutMinimum; // 最少输出代币数量
+}
+```
+代码如下：
+```sol
+/// @inheritdoc ISwapRouter
+function exactInput(ExactInputParams memory params)
+    external
+    payable
+    override
+    checkDeadline(params.deadline)
+    returns (uint256 amountOut)
+{
+    address payer = msg.sender; // msg.sender pays for the first hop
 
+    while (true) {
+        bool hasMultiplePools = params.path.hasMultiplePools();
 
+        // the outputs of prior swaps become the inputs to subsequent ones
+        params.amountIn = exactInputInternal(
+            params.amountIn,
+            hasMultiplePools ? address(this) : params.recipient, // for intermediate swaps, this contract custodies
+            0,
+            SwapCallbackData({
+                path: params.path.getFirstPool(), // only the first pool in the path is necessary
+                payer: payer
+            })
+        );
 
+        // decide whether to continue or terminate
+        if (hasMultiplePools) {
+            payer = address(this); // at this point, the caller has paid
+            params.path = params.path.skipToken();
+        } else {
+            amountOut = params.amountIn;
+            break;
+        }
+    }
 
+    require(amountOut >= params.amountOutMinimum, 'Too little received');
+}
+```
+在多池 swap 中，会按照 swap 路径，拆成多个单池 swap，循环进行，直到路径结束。如果是第一步 swap。payer 为合约调用方，否则 payer 为当前 SwapRouter 合约。
 
+[exactInputSingle](https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol#L115)方法负责单池交换，指定输入代币数量，尽可能多地获得输出代币。
 
+参数如下，指定了输入代币地址和输出代币地址：
+```sol
+struct ExactInputSingleParams {
+    address tokenIn; // 输入代币地址
+    address tokenOut; // 输出代币地址
+    uint24 fee; // 手续费费率
+    address recipient; // 接收者地址
+    uint256 deadline; // 过期的区块号
+    uint256 amountIn; // 输入代币数量
+    uint256 amountOutMinimum; // 最少输出代币数量
+    uint160 sqrtPriceLimitX96; // 限定价格，值为0则不限价
+}
+```
+代码如下：
+```sol
+/// @inheritdoc ISwapRouter
+function exactInputSingle(ExactInputSingleParams calldata params)
+    external
+    payable
+    override
+    checkDeadline(params.deadline)
+    returns (uint256 amountOut)
+{
+    amountOut = exactInputInternal(
+        params.amountIn,
+        params.recipient,
+        params.sqrtPriceLimitX96,
+        SwapCallbackData({path: abi.encodePacked(params.tokenIn, params.fee, params.tokenOut), payer: msg.sender})
+    );
+    require(amountOut >= params.amountOutMinimum, 'Too little received');
+}
+```
+实际调用 [exactInputInternal](https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol#L87)，代码如下：
+```sol
+/// @dev Performs a single exact input swap
+function exactInputInternal(
+    uint256 amountIn,
+    address recipient,
+    uint160 sqrtPriceLimitX96,
+    SwapCallbackData memory data
+) private returns (uint256 amountOut) {
+    // allow swapping to the router address with address 0
+    if (recipient == address(0)) recipient = address(this);
+
+    (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+
+    bool zeroForOne = tokenIn < tokenOut;
+
+    (int256 amount0, int256 amount1) =
+        getPool(tokenIn, tokenOut, fee).swap(
+            recipient,
+            zeroForOne,
+            amountIn.toInt256(),
+            sqrtPriceLimitX96 == 0
+                ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                : sqrtPriceLimitX96,
+            abi.encode(data)
+        );
+
+    return uint256(-(zeroForOne ? amount1 : amount0));
+}
+```
+如果没有指定接收者地址，则默认为当前 SwapRouter 合约地址。这个目的是在多池交易中，将中间代币保存在 SwapRouter 合约中。
+```sol
+if (recipient == address(0)) recipient = address(this);
+```
+接着解析出交易路由信息 tokenIn，tokenOut 和 fee。并比较 tokenIn 和 tokenOut 的地址得到 zeroForOne，表示在当前交易池是否是 token0 交换 token1。
+```sol
+(address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+
+bool zeroForOne = tokenIn < tokenOut;
+```
+最后调用交易池合约的 swap 方法，获取完成本次交换所需的 amount0 和 amount1，再根据 zeroForOne 返回 amountOut，进一步判断 amountOut 满足最少输出代币数量的要求，完成 swap。swap 方法相对复杂，放到后面专门讲。
+
+## 指定输出代币数量
+[exactOutput](https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol#L224) 方法负责多池交换，指定 swap 路径以及输出代币数量，尽可能少地提供输入代币。
+
+参数如下：
+```sol
+struct ExactOutputParams {
+    bytes path; // swap 路径，可以解析成一个或多个交易池
+    address recipient; // 接收者地址
+    uint256 deadline; // 过期的区块号
+    uint256 amountOut; // 输出代币数量
+    uint256 amountInMaximum; // 最多输入代币数量
+}
+```
+代码如下：
+```sol
+/// @inheritdoc ISwapRouter
+function exactOutput(ExactOutputParams calldata params)
+    external
+    payable
+    override
+    checkDeadline(params.deadline)
+    returns (uint256 amountIn)
+{
+    // it's okay that the payer is fixed to msg.sender here, as they're only paying for the "final" exact output
+    // swap, which happens first, and subsequent swaps are paid for within nested callback frames
+    exactOutputInternal(
+        params.amountOut,
+        params.recipient,
+        0,
+        SwapCallbackData({path: params.path, payer: msg.sender})
+    );
+
+    amountIn = amountInCached;
+    require(amountIn <= params.amountInMaximum, 'Too much requested');
+    amountInCached = DEFAULT_AMOUNT_IN_CACHED;
+}
+```
+在多池 swap 中，会按照 swap 路径，拆成多个单池 swap，循环进行，直到路径结束。如果是第一步 swap。payer 为合约调用方，否则 payer 为当前 SwapRouter 合约。
+
+[exactOutputSingle](https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol#L203)方法负责单池交换，指定输出代币数量，尽可能少地提供输入代币。
+
+参数如下，指定了输入代币地址和输出代币地址：
+```sol
+struct ExactOutputSingleParams {
+    address tokenIn; // 输入代币地址
+    address tokenOut; // 输出代币地址
+    uint24 fee; // 手续费费率
+    address recipient; // 接收者地址
+    uint256 deadline; // 过期的区块号
+    uint256 amountOut; // 输出代币数量
+    uint256 amountInMaximum; // 最多输入代币数量
+    uint160 sqrtPriceLimitX96; // 限定价格，值为0则不限价
+}
+```
+代码如下：
+```sol
+/// @inheritdoc ISwapRouter
+function exactOutputSingle(ExactOutputSingleParams calldata params)
+    external
+    payable
+    override
+    checkDeadline(params.deadline)
+    returns (uint256 amountIn)
+{
+    // avoid an SLOAD by using the swap return data
+    amountIn = exactOutputInternal(
+        params.amountOut,
+        params.recipient,
+        params.sqrtPriceLimitX96,
+        SwapCallbackData({path: abi.encodePacked(params.tokenOut, params.fee, params.tokenIn), payer: msg.sender})
+    );
+
+    require(amountIn <= params.amountInMaximum, 'Too much requested');
+    // has to be reset even though we don't use it in the single hop case
+    amountInCached = DEFAULT_AMOUNT_IN_CACHED;
+}
+```
+实际调用 [exactOutputInternal](https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol#L169)，代码如下：
+```sol
+/// @dev Performs a single exact output swap
+function exactOutputInternal(
+    uint256 amountOut,
+    address recipient,
+    uint160 sqrtPriceLimitX96,
+    SwapCallbackData memory data
+) private returns (uint256 amountIn) {
+    // allow swapping to the router address with address 0
+    if (recipient == address(0)) recipient = address(this);
+
+    (address tokenOut, address tokenIn, uint24 fee) = data.path.decodeFirstPool();
+
+    bool zeroForOne = tokenIn < tokenOut;
+
+    (int256 amount0Delta, int256 amount1Delta) =
+        getPool(tokenIn, tokenOut, fee).swap(
+            recipient,
+            zeroForOne,
+            -amountOut.toInt256(),
+            sqrtPriceLimitX96 == 0
+                ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                : sqrtPriceLimitX96,
+            abi.encode(data)
+        );
+
+    uint256 amountOutReceived;
+    (amountIn, amountOutReceived) = zeroForOne
+        ? (uint256(amount0Delta), uint256(-amount1Delta))
+        : (uint256(amount1Delta), uint256(-amount0Delta));
+    // it's technically possible to not receive the full output amount,
+    // so if no price limit has been specified, require this possibility away
+    if (sqrtPriceLimitX96 == 0) require(amountOutReceived == amountOut);
+}
+```
+跟 `exactInputInternal` 的逻辑几乎完全一致，除了因为指定输出代币数量，调用交易池合约 swap 方法使用 -amountOut.toInt256() 作为参数。
+```sol
+(int256 amount0Delta, int256 amount1Delta) =
+    getPool(tokenIn, tokenOut, fee).swap(
+        recipient,
+        zeroForOne,
+        -amountOut.toInt256(),
+        sqrtPriceLimitX96 == 0
+            ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+            : sqrtPriceLimitX96,
+        abi.encode(data)
+    );
+```
 
 
 
