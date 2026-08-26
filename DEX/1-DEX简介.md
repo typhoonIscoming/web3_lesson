@@ -613,6 +613,359 @@ function burn(
     emit Burn(msg.sender, tickLower, tickUpper, amount, amount0, amount1);
 }
 ```
+也是调用 _modifyPosition 方法修改当前价格区间的流动性，返回的 amount0Int 和 amount1Int 表示 amount 流动性对应的 token0 和 token1 的代币数量，position 表示用户的头寸信息，在这里主要作用是用来记录待取回代币数量。
+```sol
+if (amount0 > 0 || amount1 > 0) {
+    (position.tokensOwed0, position.tokensOwed1) = (
+        position.tokensOwed0 + uint128(amount0),
+        position.tokensOwed1 + uint128(amount1)
+    );
+}
+```
+用户可以通过主动调用 collect 方法取出自己头寸信息记录的 tokensOwed0 数量的 token0 和 tokensOwed1 数量对应的 token1。
+
+## collect
+
+取出待领取代币调用的是 NonfungiblePositionManager 合约的 [collect](https://github.com/Uniswap/v3-periphery/blob/main/contracts/NonfungiblePositionManager.sol#L309)。
+
+参数如下：
+```sol
+struct CollectParams {
+    uint256 tokenId; // 头寸 id
+    address recipient; // 接收者地址
+    uint128 amount0Max; // 最大 token0 数量
+    uint128 amount1Max; // 最大 token1 数量
+}
+```
+代码如下：
+```sol
+/// @inheritdoc INonfungiblePositionManager
+function collect(CollectParams calldata params)
+    external
+    payable
+    override
+    isAuthorizedForToken(params.tokenId)
+    returns (uint256 amount0, uint256 amount1)
+{
+    require(params.amount0Max > 0 || params.amount1Max > 0);
+    // allow collecting to the nft position manager address with address 0
+    address recipient = params.recipient == address(0) ? address(this) : params.recipient;
+
+    Position storage position = _positions[params.tokenId];
+
+    PoolAddress.PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
+
+    IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+
+    (uint128 tokensOwed0, uint128 tokensOwed1) = (position.tokensOwed0, position.tokensOwed1);
+
+    // trigger an update of the position fees owed and fee growth snapshots if it has any liquidity
+    if (position.liquidity > 0) {
+        pool.burn(position.tickLower, position.tickUpper, 0);
+        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) =
+            pool.positions(PositionKey.compute(address(this), position.tickLower, position.tickUpper));
+
+        tokensOwed0 += uint128(
+            FullMath.mulDiv(
+                feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
+                position.liquidity,
+                FixedPoint128.Q128
+            )
+        );
+        tokensOwed1 += uint128(
+            FullMath.mulDiv(
+                feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
+                position.liquidity,
+                FixedPoint128.Q128
+            )
+        );
+
+        position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+        position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
+    }
+
+    // compute the arguments to give to the pool#collect method
+    (uint128 amount0Collect, uint128 amount1Collect) =
+        (
+            params.amount0Max > tokensOwed0 ? tokensOwed0 : params.amount0Max,
+            params.amount1Max > tokensOwed1 ? tokensOwed1 : params.amount1Max
+        );
+
+    // the actual amounts collected are returned
+    (amount0, amount1) = pool.collect(
+        recipient,
+        position.tickLower,
+        position.tickUpper,
+        amount0Collect,
+        amount1Collect
+    );
+
+    // sometimes there will be a few less wei than expected due to rounding down in core, but we just subtract the full amount expected
+    // instead of the actual amount so we can burn the token
+    (position.tokensOwed0, position.tokensOwed1) = (tokensOwed0 - amount0Collect, tokensOwed1 - amount1Collect);
+
+    emit Collect(params.tokenId, recipient, amount0Collect, amount1Collect);
+}
+```
+首先获取待取回代币数量，如果该头寸含有流动性，则触发一次头寸状态的更新，这里调用了交易池合约的burn方法，但是传入的流动性参数为 0。这是因为 V3 只在 mint 和 burn 时才更新头寸状态，而 collect 方法可能在 swap 之后被调用，可能会导致头寸状态不是最新的。最后调用了交易池合约的 collect 方法取回代币。
+```sol
+// the actual amounts collected are returned
+(amount0, amount1) = pool.collect(
+    recipient,
+    position.tickLower,
+    position.tickUpper,
+    amount0Collect,
+    amount1Collect
+);
+```
+交易池合约的 [collect](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L490) 的逻辑比较简单，这里就不展开了，参数 amount0Requested 为请求取回 token0 的数量，amount1Requested 即请求取回 token1 的数量。如果 amount0Requested 大于 position.tokensOwed0，则取回所有的 token0，取回 token1 也同理。
+
+## _modifyPosition
+
+[_modifyPosition](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L306) 方法是 mint 和 burn 的核心方法。
+
+参数如下：
+```sol
+struct ModifyPositionParams {
+    // the address that owns the position
+    address owner;
+    // the lower and upper tick of the position
+    int24 tickLower;
+    int24 tickUpper;
+    // any change in liquidity
+    int128 liquidityDelta;
+}
+```
+代码如下：
+```sol
+/// @dev Effect some changes to a position
+/// @param params the position details and the change to the position's liquidity to effect
+/// @return position a storage pointer referencing the position with the given owner and tick range
+/// @return amount0 the amount of token0 owed to the pool, negative if the pool should pay the recipient
+/// @return amount1 the amount of token1 owed to the pool, negative if the pool should pay the recipient
+function _modifyPosition(ModifyPositionParams memory params)
+    private
+    noDelegateCall
+    returns (
+        Position.Info storage position,
+        int256 amount0,
+        int256 amount1
+    )
+{
+    checkTicks(params.tickLower, params.tickUpper);
+
+    Slot0 memory _slot0 = slot0; // SLOAD for gas optimization
+
+    position = _updatePosition(
+        params.owner,
+        params.tickLower,
+        params.tickUpper,
+        params.liquidityDelta,
+        _slot0.tick
+    );
+
+    if (params.liquidityDelta != 0) {
+        if (_slot0.tick < params.tickLower) {
+            // current tick is below the passed range; liquidity can only become in range by crossing from left to
+            // right, when we'll need _more_ token0 (it's becoming more valuable) so user must provide it
+            amount0 = SqrtPriceMath.getAmount0Delta(
+                TickMath.getSqrtRatioAtTick(params.tickLower),
+                TickMath.getSqrtRatioAtTick(params.tickUpper),
+                params.liquidityDelta
+            );
+        } else if (_slot0.tick < params.tickUpper) {
+            // current tick is inside the passed range
+            uint128 liquidityBefore = liquidity; // SLOAD for gas optimization
+
+            // write an oracle entry
+            (slot0.observationIndex, slot0.observationCardinality) = observations.write(
+                _slot0.observationIndex,
+                _blockTimestamp(),
+                _slot0.tick,
+                liquidityBefore,
+                _slot0.observationCardinality,
+                _slot0.observationCardinalityNext
+            );
+
+            amount0 = SqrtPriceMath.getAmount0Delta(
+                _slot0.sqrtPriceX96,
+                TickMath.getSqrtRatioAtTick(params.tickUpper),
+                params.liquidityDelta
+            );
+            amount1 = SqrtPriceMath.getAmount1Delta(
+                TickMath.getSqrtRatioAtTick(params.tickLower),
+                _slot0.sqrtPriceX96,
+                params.liquidityDelta
+            );
+
+            liquidity = LiquidityMath.addDelta(liquidityBefore, params.liquidityDelta);
+        } else {
+            // current tick is above the passed range; liquidity can only become in range by crossing from right to
+            // left, when we'll need _more_ token1 (it's becoming more valuable) so user must provide it
+            amount1 = SqrtPriceMath.getAmount1Delta(
+                TickMath.getSqrtRatioAtTick(params.tickLower),
+                TickMath.getSqrtRatioAtTick(params.tickUpper),
+                params.liquidityDelta
+            );
+        }
+    }
+}
+```
+先通过 _updatePosition 更新头寸信息，接着分别计算出 liquidityDelta 流动性需要提供的 token0 数量 amount0 和 token1 数量 amount1，流动性的计算公式在创建流动性时已经介绍了。
+
+[_updatePosition](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L379) 方法代码如下：
+
+```sol
+/// @dev Gets and updates a position with the given liquidity delta
+/// @param owner the owner of the position
+/// @param tickLower the lower tick of the position's tick range
+/// @param tickUpper the upper tick of the position's tick range
+/// @param tick the current tick, passed to avoid sloads
+function _updatePosition(
+    address owner,
+    int24 tickLower,
+    int24 tickUpper,
+    int128 liquidityDelta,
+    int24 tick
+) private returns (Position.Info storage position) {
+    position = positions.get(owner, tickLower, tickUpper);
+
+    uint256 _feeGrowthGlobal0X128 = feeGrowthGlobal0X128; // SLOAD for gas optimization
+    uint256 _feeGrowthGlobal1X128 = feeGrowthGlobal1X128; // SLOAD for gas optimization
+
+    // if we need to update the ticks, do it
+    bool flippedLower;
+    bool flippedUpper;
+    if (liquidityDelta != 0) {
+        uint32 time = _blockTimestamp();
+        (int56 tickCumulative, uint160 secondsPerLiquidityCumulativeX128) =
+            observations.observeSingle(
+                time,
+                0,
+                slot0.tick,
+                slot0.observationIndex,
+                liquidity,
+                slot0.observationCardinality
+            );
+
+        flippedLower = ticks.update(
+            tickLower,
+            tick,
+            liquidityDelta,
+            _feeGrowthGlobal0X128,
+            _feeGrowthGlobal1X128,
+            secondsPerLiquidityCumulativeX128,
+            tickCumulative,
+            time,
+            false,
+            maxLiquidityPerTick
+        );
+        flippedUpper = ticks.update(
+            tickUpper,
+            tick,
+            liquidityDelta,
+            _feeGrowthGlobal0X128,
+            _feeGrowthGlobal1X128,
+            secondsPerLiquidityCumulativeX128,
+            tickCumulative,
+            time,
+            true,
+            maxLiquidityPerTick
+        );
+
+        if (flippedLower) {
+            tickBitmap.flipTick(tickLower, tickSpacing);
+        }
+        if (flippedUpper) {
+            tickBitmap.flipTick(tickUpper, tickSpacing);
+        }
+    }
+
+    (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
+        ticks.getFeeGrowthInside(tickLower, tickUpper, tick, _feeGrowthGlobal0X128, _feeGrowthGlobal1X128);
+
+    position.update(liquidityDelta, feeGrowthInside0X128, feeGrowthInside1X128);
+
+    // clear any tick data that is no longer needed
+    if (liquidityDelta < 0) {
+        if (flippedLower) {
+            ticks.clear(tickLower);
+        }
+        if (flippedUpper) {
+            ticks.clear(tickUpper);
+        }
+    }
+}
+```
+ticktickCumulative 和 secondsPerLiquidityCumulativeX128 是预言机观察点相关的两个变量，这里不详细解释。
+```sol
+(int56 tickCumulative, uint160 secondsPerLiquidityCumulativeX128) =
+    observations.observeSingle(
+        time,
+        0,
+        slot0.tick,
+        slot0.observationIndex,
+        liquidity,
+        slot0.observationCardinality
+    );
+```
+接着使用 ticks.update 分别更新价格区间低点和价格区间高点的状态。如果对应 tick 的流动性从从无到有，或从有到无，则表示该 tick 需要被翻转。
+```sol
+flippedLower = ticks.update(
+    tickLower,
+    tick,
+    liquidityDelta,
+    _feeGrowthGlobal0X128,
+    _feeGrowthGlobal1X128,
+    secondsPerLiquidityCumulativeX128,
+    tickCumulative,
+    time,
+    false,
+    maxLiquidityPerTick
+);
+flippedUpper = ticks.update(
+    tickUpper,
+    tick,
+    liquidityDelta,
+    _feeGrowthGlobal0X128,
+    _feeGrowthGlobal1X128,
+    secondsPerLiquidityCumulativeX128,
+    tickCumulative,
+    time,
+    true,
+    maxLiquidityPerTick
+);
+```
+随后计算该价格区间的累积的流动性手续费。
+```sol
+(uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
+    ticks.getFeeGrowthInside(tickLower, tickUpper, tick, _feeGrowthGlobal0X128, _feeGrowthGlobal1X128);
+```
+最后更新头寸信息，并判断是否 tick 被翻转，如果 tick 被翻转则调用 ticks.clear 清空 tick 状态。
+
+```sol
+position.update(liquidityDelta, feeGrowthInside0X128, feeGrowthInside1X128);
+// clear any tick data that is no longer needed
+if (liquidityDelta < 0) {
+    if (flippedLower) {
+
+    }
+    if (flippedUpper) {
+        ticks.clear(tickUpper);
+    }
+}
+```
+至此完成更新头寸流程。
+
+## swap
+
+swap 也就指交易，是 Uniswap 中最常用的也是最核心的功能。对应 https://app.uniswap.org/swap 中的相关操作，接下来让我们看看 Uniswap 的合约是如何实现 swap 的。
+
+
+
+
+
+
 
 
 
