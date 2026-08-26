@@ -431,6 +431,94 @@ if (amount1 > 0) require(balance1Before.add(amount1) <= balance1(), 'M1');
 ```
 至此完成了流动性的创建。
 
+## 增加流动性
+
+添加流动性调用的是 NonfungiblePositionManager 合约的 [increaseLiquidity](https://github.com/Uniswap/v3-periphery/blob/main/contracts/NonfungiblePositionManager.sol#L198)。
+
+参数如下：
+```sol
+struct IncreaseLiquidityParams {
+    uint256 tokenId; // 头寸 id
+    uint256 amount0Desired; // 添加流动性中 token0 数量
+    uint256 amount1Desired; // 添加流动性中 token1 数量
+    uint256 amount0Min; // 最小添加 token0 数量
+    uint256 amount1Min; // 最小添加 token1 数量
+    uint256 deadline; // 过期的区块号
+}
+```
+代码如下：
+```sol
+/// @inheritdoc INonfungiblePositionManager
+function increaseLiquidity(IncreaseLiquidityParams calldata params)
+    external
+    payable
+    override
+    checkDeadline(params.deadline)
+    returns (
+        uint128 liquidity,
+        uint256 amount0,
+        uint256 amount1
+    )
+{
+    Position storage position = _positions[params.tokenId];
+
+    PoolAddress.PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
+
+    IUniswapV3Pool pool;
+    (liquidity, amount0, amount1, pool) = addLiquidity(
+        AddLiquidityParams({
+            token0: poolKey.token0,
+            token1: poolKey.token1,
+            fee: poolKey.fee,
+            tickLower: position.tickLower,
+            tickUpper: position.tickUpper,
+            amount0Desired: params.amount0Desired,
+            amount1Desired: params.amount1Desired,
+            amount0Min: params.amount0Min,
+            amount1Min: params.amount1Min,
+            recipient: address(this)
+        })
+    );
+
+    bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
+
+    // this is now updated to the current transaction
+    (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
+
+    position.tokensOwed0 += uint128(
+        FullMath.mulDiv(
+            feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
+            position.liquidity,
+            FixedPoint128.Q128
+        )
+    );
+    position.tokensOwed1 += uint128(
+        FullMath.mulDiv(
+            feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
+            position.liquidity,
+            FixedPoint128.Q128
+        )
+    );
+
+    position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+    position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
+    position.liquidity += liquidity;
+
+    emit IncreaseLiquidity(params.tokenId, liquidity, amount0, amount1);
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
