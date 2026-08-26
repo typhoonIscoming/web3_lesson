@@ -1226,6 +1226,417 @@ function exactOutputInternal(
         abi.encode(data)
     );
 ```
+返回的 amount0Delta 和 amount1Delta 为完成本次 swap 所需的 token0 数量和实际输出的 token1 数量，进一步判断 amountOut 满足最少输出代币数量的要求，完成 swap。
+
+## swap
+一个通常的 V3 交易池存在很多互相重叠的价格区间的头寸，如下图所示：
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/img/poolv3.png)
+
+每个交易池都会跟踪当前的价格，以及所有包含现价的价格区间提供的总流动性 liquidity。在每个区间的边界的 tick 上记录下 ΔL，当价格波动，穿过某个 tick 时，会根据价格波动方向进行流动性的增加或者减少。例如价格从左到右穿过区间，当穿过区间的第一个 tick 时，流动性需要增加 ΔL，穿出最后一个 tick 时，流动性需要减少 ΔL，中间的 tick 则流动性保持不变。
+
+在一个 tick 内的流动性是常数， swap 公式如下： $$ Ptarget−Pcurrent=Δy/L $$
+
+```
+1 / Ptarget − 1 / Pcurrent=Δx / L
+```
+Pcurrent是 swap 前的价格， Ptarget是 swap 后的价格，$L$ 是 tick 内的流动性。
+
+从上面公式，可以通过输入 token1 的数量 Δy推导出目标价格 Ptarget，进而推导出输出 token0 的数量 Δx；或者通过输入 token0 的数量 Δx推导出目标价格 Ptarget，进而推导出输出 token1 的数量 Δy。
+
+如果是跨 tick 交易则需要拆解成多个 tick 内的交易：如果当前 tick 的流动性不能满足要求，价格会移动到当前区间的边界处。此时，使离开的区间休眠，并激活下一个区间。并且会开始下一个循环并且寻找下一个有流动性的 tick，直到用户需求的数量被满足。
+
+讲完理论，回到代码。[swap](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L596) 方法是交易对 swap 最核心的方法，也是最复杂的方法。
+
+参数为：
+- recipient：接收者的地址；
+- zeroForOne：如果从 token0 交换 token1 则为 true，从 token1 交换 token0 则为 false；
+- amountSpecified：指定的代币数量，指定输入的代币数量则为正数，指定输出的代币数量则为负数；
+- sqrtPriceLimitX96：限定价格，如果从 token0 交换 token1 则限定价格下限，从 token1 交换 token0 则限定价格上限；
+- data：回调参数。
+
+代码为：
+```sol
+/// @inheritdoc IUniswapV3PoolActions
+function swap(
+    address recipient,
+    bool zeroForOne,
+    int256 amountSpecified,
+    uint160 sqrtPriceLimitX96,
+    bytes calldata data
+) external override noDelegateCall returns (int256 amount0, int256 amount1) {
+    require(amountSpecified != 0, 'AS');
+
+    Slot0 memory slot0Start = slot0;
+
+    require(slot0Start.unlocked, 'LOK');
+    require(
+        zeroForOne
+            ? sqrtPriceLimitX96 < slot0Start.sqrtPriceX96 && sqrtPriceLimitX96 > TickMath.MIN_SQRT_RATIO
+            : sqrtPriceLimitX96 > slot0Start.sqrtPriceX96 && sqrtPriceLimitX96 < TickMath.MAX_SQRT_RATIO,
+        'SPL'
+    );
+
+    slot0.unlocked = false;
+
+    SwapCache memory cache =
+        SwapCache({
+            liquidityStart: liquidity,
+            blockTimestamp: _blockTimestamp(),
+            feeProtocol: zeroForOne ? (slot0Start.feeProtocol % 16) : (slot0Start.feeProtocol >> 4),
+            secondsPerLiquidityCumulativeX128: 0,
+            tickCumulative: 0,
+            computedLatestObservation: false
+        });
+
+    bool exactInput = amountSpecified > 0;
+
+    SwapState memory state =
+        SwapState({
+            amountSpecifiedRemaining: amountSpecified,
+            amountCalculated: 0,
+            sqrtPriceX96: slot0Start.sqrtPriceX96,
+            tick: slot0Start.tick,
+            feeGrowthGlobalX128: zeroForOne ? feeGrowthGlobal0X128 : feeGrowthGlobal1X128,
+            protocolFee: 0,
+            liquidity: cache.liquidityStart
+        });
+
+    // continue swapping as long as we haven't used the entire input/output and haven't reached the price limit
+    while (state.amountSpecifiedRemaining != 0 && state.sqrtPriceX96 != sqrtPriceLimitX96) {
+        StepComputations memory step;
+
+        step.sqrtPriceStartX96 = state.sqrtPriceX96;
+
+        (step.tickNext, step.initialized) = tickBitmap.nextInitializedTickWithinOneWord(
+            state.tick,
+            tickSpacing,
+            zeroForOne
+        );
+
+        // ensure that we do not overshoot the min/max tick, as the tick bitmap is not aware of these bounds
+        if (step.tickNext < TickMath.MIN_TICK) {
+            step.tickNext = TickMath.MIN_TICK;
+        } else if (step.tickNext > TickMath.MAX_TICK) {
+            step.tickNext = TickMath.MAX_TICK;
+        }
+
+        // get the price for the next tick
+        step.sqrtPriceNextX96 = TickMath.getSqrtRatioAtTick(step.tickNext);
+
+        // compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
+        (state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SwapMath.computeSwapStep(
+            state.sqrtPriceX96,
+            (zeroForOne ? step.sqrtPriceNextX96 < sqrtPriceLimitX96 : step.sqrtPriceNextX96 > sqrtPriceLimitX96)
+                ? sqrtPriceLimitX96
+                : step.sqrtPriceNextX96,
+            state.liquidity,
+            state.amountSpecifiedRemaining,
+            fee
+        );
+
+        if (exactInput) {
+            state.amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();
+            state.amountCalculated = state.amountCalculated.sub(step.amountOut.toInt256());
+        } else {
+            state.amountSpecifiedRemaining += step.amountOut.toInt256();
+            state.amountCalculated = state.amountCalculated.add((step.amountIn + step.feeAmount).toInt256());
+        }
+
+        // if the protocol fee is on, calculate how much is owed, decrement feeAmount, and increment protocolFee
+        if (cache.feeProtocol > 0) {
+            uint256 delta = step.feeAmount / cache.feeProtocol;
+            step.feeAmount -= delta;
+            state.protocolFee += uint128(delta);
+        }
+
+        // update global fee tracker
+        if (state.liquidity > 0)
+            state.feeGrowthGlobalX128 += FullMath.mulDiv(step.feeAmount, FixedPoint128.Q128, state.liquidity);
+
+        // shift tick if we reached the next price
+        if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
+            // if the tick is initialized, run the tick transition
+            if (step.initialized) {
+                // check for the placeholder value, which we replace with the actual value the first time the swap
+                // crosses an initialized tick
+                if (!cache.computedLatestObservation) {
+                    (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(
+                        cache.blockTimestamp,
+                        0,
+                        slot0Start.tick,
+                        slot0Start.observationIndex,
+                        cache.liquidityStart,
+                        slot0Start.observationCardinality
+                    );
+                    cache.computedLatestObservation = true;
+                }
+                int128 liquidityNet =
+                    ticks.cross(
+                        step.tickNext,
+                        (zeroForOne ? state.feeGrowthGlobalX128 : feeGrowthGlobal0X128),
+                        (zeroForOne ? feeGrowthGlobal1X128 : state.feeGrowthGlobalX128),
+                        cache.secondsPerLiquidityCumulativeX128,
+                        cache.tickCumulative,
+                        cache.blockTimestamp
+                    );
+                // if we're moving leftward, we interpret liquidityNet as the opposite sign
+                // safe because liquidityNet cannot be type(int128).min
+                if (zeroForOne) liquidityNet = -liquidityNet;
+
+                state.liquidity = LiquidityMath.addDelta(state.liquidity, liquidityNet);
+            }
+
+            state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;
+        } else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {
+            // recompute unless we're on a lower tick boundary (i.e. already transitioned ticks), and haven't moved
+            state.tick = TickMath.getTickAtSqrtRatio(state.sqrtPriceX96);
+        }
+    }
+
+    // update tick and write an oracle entry if the tick change
+    if (state.tick != slot0Start.tick) {
+        (uint16 observationIndex, uint16 observationCardinality) =
+            observations.write(
+                slot0Start.observationIndex,
+                cache.blockTimestamp,
+                slot0Start.tick,
+                cache.liquidityStart,
+                slot0Start.observationCardinality,
+                slot0Start.observationCardinalityNext
+            );
+        (slot0.sqrtPriceX96, slot0.tick, slot0.observationIndex, slot0.observationCardinality) = (
+            state.sqrtPriceX96,
+            state.tick,
+            observationIndex,
+            observationCardinality
+        );
+    } else {
+        // otherwise just update the price
+        slot0.sqrtPriceX96 = state.sqrtPriceX96;
+    }
+
+    // update liquidity if it changed
+    if (cache.liquidityStart != state.liquidity) liquidity = state.liquidity;
+
+    // update fee growth global and, if necessary, protocol fees
+    // overflow is acceptable, protocol has to withdraw before it hits type(uint128).max fees
+    if (zeroForOne) {
+        feeGrowthGlobal0X128 = state.feeGrowthGlobalX128;
+        if (state.protocolFee > 0) protocolFees.token0 += state.protocolFee;
+    } else {
+        feeGrowthGlobal1X128 = state.feeGrowthGlobalX128;
+        if (state.protocolFee > 0) protocolFees.token1 += state.protocolFee;
+    }
+
+    (amount0, amount1) = zeroForOne == exactInput
+        ? (amountSpecified - state.amountSpecifiedRemaining, state.amountCalculated)
+        : (state.amountCalculated, amountSpecified - state.amountSpecifiedRemaining);
+
+    // do the transfers and collect payment
+    if (zeroForOne) {
+        if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));
+
+        uint256 balance0Before = balance0();
+        IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+        require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
+    } else {
+        if (amount0 < 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));
+
+        uint256 balance1Before = balance1();
+        IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+        require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
+    }
+
+    emit Swap(msg.sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
+    slot0.unlocked = true;
+}
+```
+整体逻辑由一个 while 循环组成，将 swap 过程分解成多个小步骤，一点点的调整当前的 tick，直到满足用户所需的交易量或者价格触及限定价格（此时会部分成交）。
+```sol
+while (state.amountSpecifiedRemaining != 0 && state.sqrtPriceX96 != sqrtPriceLimitX96) {
+```
+使用 `tickBitmap.nextInitializedTickWithinOneWord` 来找到下一个已初始化的 tick
+```sol
+(step.tickNext, step.initialized) = tickBitmap.nextInitializedTickWithinOneWord(
+    state.tick,
+    tickSpacing,
+    zeroForOne
+);
+```
+使用 SwapMath.computeSwapStep 进行 tick 内的 swap。这个方法会计算出当前区间可以满足的输入数量 amountIn，如果它比 amountRemaining 要小，我们会说现在的区间不能满足整个交易，因此下一个 sqrtPriceX96 就是当前区间的上界/下界，也就是说，我们消耗完了整个区间的流动性。如果 amountIn 大于 amountRemaining，我们计算的 sqrtPriceX96 仍然在现在区间内。
+
+```sol
+// compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
+(state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SwapMath.computeSwapStep(
+    state.sqrtPriceX96,
+    (zeroForOne ? step.sqrtPriceNextX96 < sqrtPriceLimitX96 : step.sqrtPriceNextX96 > sqrtPriceLimitX96)
+        ? sqrtPriceLimitX96
+        : step.sqrtPriceNextX96,
+    state.liquidity,
+    state.amountSpecifiedRemaining,
+    fee
+);
+```
+保存本次交易的 amountIn 和 amountOut：
+
+- 如果是指定输入代币数量。amountSpecifiedRemaining 表示剩余可用输入代币数量，amountCalculated 表示已输出代币数量（以负数表示）；
+- 如果是指定输出代币数量。amountSpecifiedRemaining 表示剩余需要输出的代币数量（初始为负值，因此每次交换后需要加上 step.amountOut，直到为 0），amountCalculated 表示已使用的输入代币数量。
+
+```sol
+if (exactInput) {
+    state.amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();
+    state.amountCalculated = state.amountCalculated.sub(step.amountOut.toInt256());
+} else {
+    state.amountSpecifiedRemaining += step.amountOut.toInt256();
+    state.amountCalculated = state.amountCalculated.add((step.amountIn + step.feeAmount).toInt256());
+}
+```
+如果本次 swap 后的价格达到目标价格，如果该 tick 已经初始化，则通过 ticks.cross 方法穿越该 tick，返回新增的净流动性 liquidityNet 更新可用流动性 state.liquidity，移动当前 tick 到下一个 tick。
+
+如果本次 swap 后的价格达到目标价格，但是又不等于初始价格，即表示此时 swap 结束，使用 swap 后的价格计算最新的 tick 值。
+
+```sol
+if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
+    // if the tick is initialized, run the tick transition
+    if (step.initialized) {
+        // check for the placeholder value, which we replace with the actual value the first time the swap
+        // crosses an initialized tick
+        if (!cache.computedLatestObservation) {
+            (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(
+                cache.blockTimestamp,
+                0,
+                slot0Start.tick,
+                slot0Start.observationIndex,
+                cache.liquidityStart,
+                slot0Start.observationCardinality
+            );
+            cache.computedLatestObservation = true;
+        }
+        int128 liquidityNet =
+            ticks.cross(
+                step.tickNext,
+                (zeroForOne ? state.feeGrowthGlobalX128 : feeGrowthGlobal0X128),
+                (zeroForOne ? feeGrowthGlobal1X128 : state.feeGrowthGlobalX128),
+                cache.secondsPerLiquidityCumulativeX128,
+                cache.tickCumulative,
+                cache.blockTimestamp
+            );
+        // if we're moving leftward, we interpret liquidityNet as the opposite sign
+        // safe because liquidityNet cannot be type(int128).min
+        if (zeroForOne) liquidityNet = -liquidityNet;
+
+        state.liquidity = LiquidityMath.addDelta(state.liquidity, liquidityNet);
+    }
+
+    state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;
+} else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {
+    // recompute unless we're on a lower tick boundary (i.e. already transitioned ticks), and haven't moved
+    state.tick = TickMath.getTickAtSqrtRatio(state.sqrtPriceX96);
+}
+```
+重复上述步骤，直到 swap 完全结束。
+
+完成 swap 后，更新 slot0 的状态和全局流动性。
+
+```sol
+// update tick and write an oracle entry if the tick change
+if (state.tick != slot0Start.tick) {
+    (uint16 observationIndex, uint16 observationCardinality) =
+        observations.write(
+            slot0Start.observationIndex,
+            cache.blockTimestamp,
+            slot0Start.tick,
+            cache.liquidityStart,
+            slot0Start.observationCardinality,
+            slot0Start.observationCardinalityNext
+        );
+    (slot0.sqrtPriceX96, slot0.tick, slot0.observationIndex, slot0.observationCardinality) = (
+        state.sqrtPriceX96,
+        state.tick,
+        observationIndex,
+        observationCardinality
+    );
+} else {
+    // otherwise just update the price
+    slot0.sqrtPriceX96 = state.sqrtPriceX96;
+}
+
+// update liquidity if it changed
+if (cache.liquidityStart != state.liquidity) liquidity = state.liquidity;
+```
+最后，计算本次 swap 需要的具体 amount0 和 amount1，调用 IUniswapV3SwapCallback 接口。在回调之前已经把输出的 token 发送给了 recipient。
+
+```sol
+// do the transfers and collect payment
+if (zeroForOne) {
+    if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));
+
+    uint256 balance0Before = balance0();
+    IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+    require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
+} else {
+    if (amount0 < 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));
+
+    uint256 balance1Before = balance1();
+    IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+    require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
+}
+```
+IUniswapV3SwapCallback 的实现在 periphery 仓库的 SwapRouter.sol 中，负责支付输入的 token。
+
+```sol
+/// @inheritdoc IUniswapV3SwapCallback
+function uniswapV3SwapCallback(
+    int256 amount0Delta,
+    int256 amount1Delta,
+    bytes calldata _data
+) external override {
+    require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+    SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
+    (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+    CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
+
+    (bool isExactInput, uint256 amountToPay) =
+        amount0Delta > 0
+            ? (tokenIn < tokenOut, uint256(amount0Delta))
+            : (tokenOut < tokenIn, uint256(amount1Delta));
+    if (isExactInput) {
+        pay(tokenIn, data.payer, msg.sender, amountToPay);
+    } else {
+        // either initiate the next swap or pay
+        if (data.path.hasMultiplePools()) {
+            data.path = data.path.skipToken();
+            exactOutputInternal(amountToPay, msg.sender, 0, data);
+        } else {
+            amountInCached = amountToPay;
+            tokenIn = tokenOut; // swap in/out because exact output swaps are reversed
+            pay(tokenIn, data.payer, msg.sender, amountToPay);
+        }
+    }
+}
+```
+至此，完成了整体 swap 流程。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
