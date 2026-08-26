@@ -1618,10 +1618,20 @@ function uniswapV3SwapCallback(
 至此，完成了整体 swap 流程。
 
 
+## 计算流动性和资产金额
 
+白皮书中似乎提供了一种计算L、x和y的简单方法： $$ L=x_{virtual}\cdot\sqrt P= \frac {y_{virtual}}{\sqrt P} $$ Table 1: 词汇说明
 
-
-
+| Symbol Name                  | Whitepaper | Uniswap code     | Notes                                        |
+| ---------------------------- | ---------- | ---------------- | -------------------------------------------- |
+| Pice                         | P          | sqrtRatioX96     | Code tracks $\sqrt P$ for efficiency reasons |
+| Lower bound of a price range | $p_a$      | sqrtRatioAX96    | Code tracks $\sqrt{p_a}$                     |
+| Upper bound of a price range | $p_b$      | sqrtRatioBX96    | Code tracks $\sqrt{p_b}$                     |
+| The first asset              | X          | token0           |                                              |
+| The second asset             | Y          | token1           |                                              |
+| Amount of the first asset    | $x$        | amount0          |                                              |
+| Amount of the second asset   | $y$        | amount1          |                                              |
+| Virtual liquidity            | L          | liquidity amount |                                              |
 
 
 
