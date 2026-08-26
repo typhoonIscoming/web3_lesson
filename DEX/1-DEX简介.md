@@ -507,20 +507,112 @@ function increaseLiquidity(IncreaseLiquidityParams calldata params)
     emit IncreaseLiquidity(params.tokenId, liquidity, amount0, amount1);
 }
 ```
+整体逻辑跟 mint 类似，先从 tokeinId 拿到头寸，然后 addLiquidity 添加流动性，返回添加成功的流动性 liquidity，所消耗的 amount0 和 amount1，以及交易池合约 pool。根据 pool 对象里的最新头寸信息，更新头寸状态。
 
+## 减少流动性
 
+减少流动性调用的是 NonfungiblePositionManager 合约的 [decreaseLiquidity](https://github.com/Uniswap/v3-periphery/blob/main/contracts/NonfungiblePositionManager.sol#L257)。
 
+参数如下：
+```sol
+struct DecreaseLiquidityParams {
+    uint256 tokenId; // 头寸 id
+    uint128 liquidity; // 减少流动性数量
+    uint256 amount0Min; // 最小减少 token0 数量
+    uint256 amount1Min; // 最小减少 token1 数量
+    uint256 deadline; // 过期的区块号
+}
+```
+代码如下：
+```sol
+/// @inheritdoc INonfungiblePositionManager
+function decreaseLiquidity(DecreaseLiquidityParams calldata params)
+    external
+    payable
+    override
+    isAuthorizedForToken(params.tokenId)
+    checkDeadline(params.deadline)
+    returns (uint256 amount0, uint256 amount1)
+{
+    require(params.liquidity > 0);
+    Position storage position = _positions[params.tokenId];
 
+    uint128 positionLiquidity = position.liquidity;
+    require(positionLiquidity >= params.liquidity);
 
+    PoolAddress.PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
+    IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+    (amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
 
+    require(amount0 >= params.amount0Min && amount1 >= params.amount1Min, 'Price slippage check');
 
+    bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
+    // this is now updated to the current transaction
+    (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
 
+    position.tokensOwed0 +=
+        uint128(amount0) +
+        uint128(
+            FullMath.mulDiv(
+                feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
+                positionLiquidity,
+                FixedPoint128.Q128
+            )
+        );
+    position.tokensOwed1 +=
+        uint128(amount1) +
+        uint128(
+            FullMath.mulDiv(
+                feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
+                positionLiquidity,
+                FixedPoint128.Q128
+            )
+        );
 
+    position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+    position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
+    // subtraction is safe because we checked positionLiquidity is gte params.liquidity
+    position.liquidity = positionLiquidity - params.liquidity;
 
+    emit DecreaseLiquidity(params.tokenId, params.liquidity, amount0, amount1);
+}
+```
+跟 increaseLiquidity 是反向操作，核心逻辑是调用交易池合约的 burn 方法。
+```sol
+(amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
+```
+[burn](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L517) 的参数为流动性区间下界 tickLower，流动性区间上界 tickUpper 和流动性数量 amount，代码如下：
+```sol
+/// @inheritdoc IUniswapV3PoolActions
+/// @dev noDelegateCall is applied indirectly via _modifyPosition
+function burn(
+    int24 tickLower,
+    int24 tickUpper,
+    uint128 amount
+) external override lock returns (uint256 amount0, uint256 amount1) {
+    (Position.Info storage position, int256 amount0Int, int256 amount1Int) =
+        _modifyPosition(
+            ModifyPositionParams({
+                owner: msg.sender,
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: -int256(amount).toInt128()
+            })
+        );
 
+    amount0 = uint256(-amount0Int);
+    amount1 = uint256(-amount1Int);
 
+    if (amount0 > 0 || amount1 > 0) {
+        (position.tokensOwed0, position.tokensOwed1) = (
+            position.tokensOwed0 + uint128(amount0),
+            position.tokensOwed1 + uint128(amount1)
+        );
+    }
 
-
+    emit Burn(msg.sender, tickLower, tickUpper, amount, amount0, amount1);
+}
+```
 
 
 
