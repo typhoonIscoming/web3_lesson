@@ -1633,17 +1633,75 @@ function uniswapV3SwapCallback(
 | Amount of the second asset   | $y$        | amount1          |                                              |
 | Virtual liquidity            | L          | liquidity amount |                                              |
 
+然而，这里的x和y是虚拟代币数量，而不是真实数量！计算x和y的真实数量的数学公式在白皮书的最后给出，具体是在公式6.29和6.30中。这些数学公式的实现可以在文件LiquidityAmounts.sol中找到。
 
+这些方程可以从白皮书中的关键方程2.2中推导出： $$ (x_{real}+ \frac L{\sqrt{P_b}})(y_{real} + L\sqrt{p_a})=L^2 $$ 尝试直接解方程2.2以得到L会得到一个非常混乱的结果。相反，我们可以注意到，在价格范围之外，流动性完全由单个资产提供，要么是X，要么是Y，具体取决于当前价格在价格范围的哪一侧。我们有三个选择：
 
+1. 假设P≤pa，则头寸完全在X中，因此y=0：
+$$
+(x + \frac L{\sqrt{p_b}})L\sqrt{p_a}=L^2  \tag1
+$$
 
+$$
+x\sqrt{p_a}+L\frac {\sqrt{p_a}}{\sqrt{p_b}}=L \tag2
+$$
 
+$$
+x = \frac L{\sqrt{p_a}}-\frac L{\sqrt{p_b}} \tag3
+$$
 
+$$
+x = L\frac{\sqrt{p_b}-\sqrt{p_a}}{\sqrt{p_a}\cdot\sqrt{p_b}} \tag4
+$$
 
+该头寸的流动性为：
 
+$$
+L= x \frac{\sqrt{p_a}\cdot \sqrt{p_b}}{\sqrt{p_b}-\sqrt{p_a}} \tag5
+$$
 
+2. 假设P≥pb，则头寸完全在Y中，因此x=0：
 
+$$
+\frac L{\sqrt{p_b}}(y+L\sqrt{p_a})=L^2 \tag6
+$$
 
+$$
+\frac y{\sqrt{p_b}} + L\frac{\sqrt{p_a}}{\sqrt{p_b}}=L \tag7
+$$
 
+$$
+y=L(\sqrt{p_b}-\sqrt{p_a}) \tag8
+$$
+
+该头寸的流动性为：
+$$
+L = \frac y{\sqrt{p_b}-\sqrt{p_a}} \tag9
+$$
+
+3. 当前价格在范围内：pa < P < pb。我认为应该这样考虑，即在最佳头寸，两种资产将平等地为流动性做出贡献。也就是说，在价格范围（P，pb）的一侧，资产x提供的流动性Lx必须等于在价格范围（pa，P）的另一侧资产y提供的流动性Ly。根据方程5和9，我们知道如何计算单资产范围的流动性。当P位于范围（pa，pb）内时，我们可以将（P，pb）视为X提供流动性的子范围，将（pa，P）视为Y提供流动性的子范围。将这些代入方程5和9，并要求Lx(P, pb) = Ly(pa, P)，我们得到：
+
+$$
+x\frac{\sqrt P\cdot\sqrt{p_b}}{\sqrt{p_b}-\sqrt{P}} = \frac {y}{\sqrt{P} - \sqrt{p_a}} \tag{10}
+$$
+
+方程（第10式）很重要，因为它可以解出五个变量中的任意一个，包括x、y、P、pa、pb，而不需要涉及到流动性。然而，对于x和y，这是不必要的；等式4和8的简单修改就足够了：
+
+$$
+x = L\frac{\sqrt{p_b}-\sqrt{P}}{\sqrt{P}\cdot\sqrt{p_b}} \tag{11}
+$$
+
+$$
+y=L(\sqrt{P}-\sqrt{p_a}) \tag{12}
+$$
+
+综上所述：
+
+- 如果P≤pa，y=0，x可通过等式4计算。
+- 如果P≥pb，则x=0，y可通过公式8计算。
+- 否则，pa<P<pb，x和y可分别通过等式11和12计算。
+
+从概念上讲，这一结果只是以略微不同的形式重述了白皮书中的等式6.29和6.30。然而，白皮书中∆的使用可能会让新用户感到困惑——确切地说，Δ是什么？如果是全新的头寸怎么办？出于这个原因，上面的方程4-12避免提及delta，目的是为了简单。当然，从更深入的角度来看，白皮书方程6.29和6.30仍然可以应用于新头寸：在这种情况下，我们只需要取∆L=L。
 
 
 
