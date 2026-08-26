@@ -164,18 +164,174 @@ function createPool(
     emit PoolCreated(token0, token1, fee, tickSpacing, pool);
 }
 ```
+通过 fee 获取对应的 tickSpacing，要解释 tickSpacing 必须先解释 tick。
+```sol
+int24 tickSpacing = feeAmountTickSpacing[fee];
+```
+tick 是 V3 中价格的表示，如下图所示：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/img/tick.webp)
 
+在 V3，整个价格区间由离散的、均匀分布的 ticks 进行标定。因为在 Uniswap V3 中 LP 添加流动性时都会提供一个价格的范围（为了 LP 可以更好的管理头寸），要让不同价格范围的流动性可以更好的管理和利用，需要 ticks 来将价格划分为一个一个的区间，每个 tick 有一个 index 和对应的价格： $$ P(i)=1.0001i $$ P(i) 即为 tick 在 i 位置的价格. 后一个价格点的价格是前一个价格点价格基础上浮动万分之一。我们可以得到关于 i 的公式： $$ i=log1.0001⁡(P(i)) $$ V3 规定只有被 tickSpacing 整除的 tick 才允许被初始化，tickSpacing 越大，每个 tick 流动性越多，tick 之间滑点越大，但会节省跨 tick 操作的 gas。
 
+随后确认对应的交易池合约尚未被创建，调用 [deploy](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3PoolDeployer.sol#L27)，参数为工厂合约地址，token0 地址，token1 地址，fee，以及上面提到的 tickSpacing。
+```sol
+pool = deploy(address(this), token0, token1, fee, tickSpacing);
+```
 
+## 初始化交易池
 
+初始化交易池调用的是 UniswapV3Factory 合约的 [initialize](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L271)，参数为当前价格 sqrtPriceX96，含义上面已经介绍过了
 
+代码如下：
+```sol
+/// @inheritdoc IUniswapV3PoolActions
+/// @dev not locked because it initializes unlocked
+function initialize(uint160 sqrtPriceX96) external override {
+    require(slot0.sqrtPriceX96 == 0, 'AI');
 
+    int24 tick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
 
+    (uint16 cardinality, uint16 cardinalityNext) = observations.initialize(_blockTimestamp());
 
+    slot0 = Slot0({
+        sqrtPriceX96: sqrtPriceX96,
+        tick: tick,
+        observationIndex: 0,
+        observationCardinality: cardinality,
+        observationCardinalityNext: cardinalityNext,
+        feeProtocol: 0,
+        unlocked: true
+    });
 
+    emit Initialize(sqrtPriceX96, tick);
+}
+```
+首先从 sqrtPriceX96 换算出 tick 的值。
+```sol
+int24 tick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
+```
+然后初始化预言机，cardinality 表示当前预言机的观测点数组容量， cardinalityNext 表示预言机扩容后的观测点数组容量，这里不详细解释。
+```sol
+(uint16 cardinality, uint16 cardinalityNext) = observations.initialize(_blockTimestamp());
+```
+最后初始化 slot0 变量，用于记录交易池的全局状态，这里主要就是记录价格和预言机的状态。
+```sol
+slot0 = Slot0({
+    sqrtPriceX96: sqrtPriceX96,
+    tick: tick,
+    observationIndex: 0,
+    observationCardinality: cardinality,
+    observationCardinalityNext: cardinalityNext,
+    feeProtocol: 0,
+    unlocked: true
+});
+```
+[Slot0](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L56)结构如下，源码中已经有了详细的注释。
+```sol
+struct Slot0 {
+    // the current price
+    uint160 sqrtPriceX96;
+    // the current tick
+    int24 tick;
+    // the most-recently updated index of the observations array
+    uint16 observationIndex;
+    // the current maximum number of observations that are being stored
+    uint16 observationCardinality;
+    // the next maximum number of observations to store, triggered in observations.write
+    uint16 observationCardinalityNext;
+    // the current protocol fee as a percentage of the swap fee taken on withdrawal
+    // represented as an integer denominator (1/x)%
+    uint8 feeProtocol;
+    // whether the pool is locked
+    bool unlocked;
+}
+```
+至此完成了交易池合约的初始化。
 
+## 创建流动性
 
+创建流动性调用的是 NonfungiblePositionManager 合约的 [mint](https://github.com/Uniswap/v3-periphery/blob/main/contracts/NonfungiblePositionManager.sol#L128)。
+
+参数如下：
+```sol
+struct MintParams {
+    address token0; // token0 地址
+    address token1; // token1 地址
+    uint24 fee; // 费率
+    int24 tickLower; // 流动性区间下界
+    int24 tickUpper; // 流动性区间上界
+    uint256 amount0Desired; // 添加流动性中 token0 数量
+    uint256 amount1Desired; // 添加流动性中 token1 数量
+    uint256 amount0Min; // 最小添加 token0 数量
+    uint256 amount1Min; // 最小添加 token1 数量
+    address recipient; // 头寸接受者的地址
+    uint256 deadline; // 过期的区块号
+}
+```
+代码如下：
+
+```sol
+/// @inheritdoc INonfungiblePositionManager
+function mint(MintParams calldata params)
+    external
+    payable
+    override
+    checkDeadline(params.deadline)
+    returns (
+        uint256 tokenId,
+        uint128 liquidity,
+        uint256 amount0,
+        uint256 amount1
+    )
+{
+    IUniswapV3Pool pool;
+    (liquidity, amount0, amount1, pool) = addLiquidity(
+        AddLiquidityParams({
+            token0: params.token0,
+            token1: params.token1,
+            fee: params.fee,
+            recipient: address(this),
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            amount0Desired: params.amount0Desired,
+            amount1Desired: params.amount1Desired,
+            amount0Min: params.amount0Min,
+            amount1Min: params.amount1Min
+        })
+    );
+
+    _mint(params.recipient, (tokenId = _nextId++));
+
+    bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
+    (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
+
+    // idempotent set
+    uint80 poolId =
+        cachePoolKey(
+            address(pool),
+            PoolAddress.PoolKey({token0: params.token0, token1: params.token1, fee: params.fee})
+        );
+
+    _positions[tokenId] = Position({
+        nonce: 0,
+        operator: address(0),
+        poolId: poolId,
+        tickLower: params.tickLower,
+        tickUpper: params.tickUpper,
+        liquidity: liquidity,
+        feeGrowthInside0LastX128: feeGrowthInside0LastX128,
+        feeGrowthInside1LastX128: feeGrowthInside1LastX128,
+        tokensOwed0: 0,
+        tokensOwed1: 0
+    });
+
+    emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
+}
+```
+梳理下整体逻辑，首先是 addLiquidity 添加流动性，然后调用 _mint 发送凭证（NFT）给头寸接受者，接着计算一个自增的 poolId，跟交易池地址互相索引，最后将所有信息记录到头寸的结构体中。
+
+addLiquidity 方法定义在[这里](https://github.com/Uniswap/v3-periphery/blob/main/contracts/base/LiquidityManagement.sol#L51)，核心是计算出 liquidity 然后调用交易池合约 mint 方法。
 
 
 
