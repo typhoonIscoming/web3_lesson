@@ -333,6 +333,107 @@ function mint(MintParams calldata params)
 
 addLiquidity 方法定义在[这里](https://github.com/Uniswap/v3-periphery/blob/main/contracts/base/LiquidityManagement.sol#L51)，核心是计算出 liquidity 然后调用交易池合约 mint 方法。
 
+```sol
+(amount0, amount1) = pool.mint(
+    params.recipient,
+    params.tickLower,
+    params.tickUpper,
+    liquidity,
+    abi.encode(MintCallbackData({poolKey: poolKey, payer: msg.sender}))
+);
+```
+liquidity ，即流动性，跟 tick 一样，也是 V3 中的重要概念。
+
+在 V2 中，如果我们设定乘积 k=L2， L 就是我们常说的流动性，得出如下公式： $$ L=x∗y $$ V2 流动性池的流动性是分布在 0 到正无穷，如下图所示：
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/img/liquidity.webp)
+
+在 v3 中，每个头寸提供了一个价格区间，假设 token0 的价格在价格上界 a 和价格下界 b 之间波动，为了实现集中流动性，那么曲线必须在 x/y 轴进行平移，使得 a/b 点和 x/y 轴重合，如下图：
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/img/liquidityv3.webp)
+
+我们忽略推导过程，直接给出数学公式： $$ (x+L/Pb)∗(y+L∗Pa)=L^2 $$ 我们将图中的曲线分为两部分：起始点左边和起始点右边。在swap过程中，当前价格会朝着某个方向移动：升高或降低。对于价格的移动，仅有一种 token 会起作用：当前价格升高时，swap仅需要 token0；当前价格降低时，swap仅需要 token1。
+
+当流动性提供者提供了 Δx 个 token0 时，意味着向起始点左边添加了如下流动性： $$ L=ΔxPb∗Pc/(Pb−Pc) $$ 当流动性提供者提供了 Δy 个 token1 时，意味着向起始点右边添加了如下流动性： $$ L=Δy/(Pc−Pa) $$ 如果当前价格超过价格区间属于只能添加单边流动性的情况。
+
+当前价格小于下界 b 时，只有 Δy 个 token1 起作用，意味着向 b 点右边添加了如下流动性： $$ L=Δy/(Pb−Pa) $$ 当前价格大于上界 a 时，只有 Δx 个 token0 起作用，意味着向 a 点左边添加了如下流动性： $$ L=ΔxPb∗Pa/(Pb−Pa) $$ 回到代码，计算 liquidity 的步骤如下：
+    1. 如果价格在价格区间内，分别计算出两边流动性然后取最小值；
+    2. 如果当前价格超过价格区间则是计算出单边流动性。
+
+交易池合约的 [mint](https://github.com/Uniswap/v3-core/blob/main/contracts/UniswapV3Pool.sol#L457)方法。
+
+参数为：
+- recipient：头寸接收者地址
+- tickLower：流动性区间下界
+- tickUpper：流动性区间上界
+- amount：流动性数量
+- data：回调参数
+
+代码为：
+```sol
+/// @inheritdoc IUniswapV3PoolActions
+/// @dev noDelegateCall is applied indirectly via _modifyPosition
+function mint(
+    address recipient,
+    int24 tickLower,
+    int24 tickUpper,
+    uint128 amount,
+    bytes calldata data
+) external override lock returns (uint256 amount0, uint256 amount1) {
+    require(amount > 0);
+    (, int256 amount0Int, int256 amount1Int) =
+        _modifyPosition(
+            ModifyPositionParams({
+                owner: recipient,
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: int256(amount).toInt128()
+            })
+        );
+
+    amount0 = uint256(amount0Int);
+    amount1 = uint256(amount1Int);
+
+    uint256 balance0Before;
+    uint256 balance1Before;
+    if (amount0 > 0) balance0Before = balance0();
+    if (amount1 > 0) balance1Before = balance1();
+    IUniswapV3MintCallback(msg.sender).uniswapV3MintCallback(amount0, amount1, data);
+    if (amount0 > 0) require(balance0Before.add(amount0) <= balance0(), 'M0');
+    if (amount1 > 0) require(balance1Before.add(amount1) <= balance1(), 'M1');
+
+    emit Mint(msg.sender, recipient, tickLower, tickUpper, amount, amount0, amount1);
+}
+```
+首先调用 _modifyPosition 方法修改当前价格区间的流动性，这个方法相对复杂，放到后面专门讲。其返回的 amount0Int 和 amount1Int 表示 amount 流动性对应的 token0 和 token1 的代币数量。
+
+调用 mint 方法的合约需要实现 IUniswapV3MintCallback 接口完成代币的转入操作：
+```sol
+IUniswapV3MintCallback(msg.sender).uniswapV3MintCallback(amount0, amount1, data);
+```
+IUniswapV3MintCallback 的实现在 periphery 仓库的 LiquidityManagement.sol 中。目的是通知调用方向交易池合约转入 amount0 个 token0 和 amount1 个 token2。
+```sol
+/// @inheritdoc IUniswapV3MintCallback
+function uniswapV3MintCallback(
+    uint256 amount0Owed,
+    uint256 amount1Owed,
+    bytes calldata data
+) external override {
+    MintCallbackData memory decoded = abi.decode(data, (MintCallbackData));
+    CallbackValidation.verifyCallback(factory, decoded.poolKey);
+
+    if (amount0Owed > 0) pay(decoded.poolKey.token0, decoded.payer, msg.sender, amount0Owed);
+    if (amount1Owed > 0) pay(decoded.poolKey.token1, decoded.payer, msg.sender, amount1Owed);
+}
+```
+回调完成后会检查交易池合约的对应余额是否发生变化，并且增量应该大于 amount0 和 amount1：这意味着调用方确实转入了所需的资产。
+```sol
+if (amount0 > 0) require(balance0Before.add(amount0) <= balance0(), 'M0');
+if (amount1 > 0) require(balance1Before.add(amount1) <= balance1(), 'M1');
+```
+至此完成了流动性的创建。
+
+
+
+
 
 
 
