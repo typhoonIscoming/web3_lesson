@@ -147,81 +147,217 @@ X * Y = K
 
 UniswapV2 的工作原理大概可以分成三个部分，流动性提供者（ Liquidity Provider），Uniswap 池（Uniswap Pool），交易者（Trader）。流动性提供者的作用是流动性提供者将两种代币（例如，Token A 和 Token B）存入 Uniswap 池中。
 
+图中显示的例子中，流动性提供者存入了 10 个 Token A 和 1 个 Token B；Uniswap 池中储备了各种代币，例如图中显示的 100 个 Token A 和 10 个 Token B。
 
+池中的流动性份额由流动性代币表示，图中显示共有 12 个流动性代币；交易者交易者可以向池中提交代币并交换他们需要的另一种代币。例如，交易者可以存入 10 个 Token A，并支付 0.3% 的手续费，从池中获取 1 个 Token B。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.33.webp)
 
+我们先看流动性提供者 (LP) 是如何提供流通性的。如下图所示，流动性提供者将代币存入 Uniswap 池中，增加流动性
 
+例如，在图中，流动性提供者存入了 3 个 Token A 和 1 个 Token B 。当流动性提供者存入代币后，他们会收到代表其流动性份额的池代币（ Pool Tokens ）。在图中，流动性提供者获得了 12.4 个池代币。池中的代币储备会增加，例如，图中池中的代币储备变为 1210 个 Token A 和 399 个 Token B 。更多的流动性有助于降低价格滑点，使交易更加稳定。 
 
+Uniswap 使用的恒定乘积公式 x · y = k 来确定价格曲线。增加的流动性扩展了低滑点区域，提升了交易的价格稳定性。流动性提供者通过存入代币来增加池中的流动性，并获得相应的流动性代币作为回报。这不仅帮助了交易者获得更稳定的价格，也为流动性提供者带来了交易手续费的收益。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.34.png)
 
+接下来，我们从交易者的视角去看，交易者是如何换取代币以及交易行为会对 Uniswap Pool 产生什么影响。
 
+如下图所示，交易者希望在 Uniswap 上交换代币。例如，在图中，交易者打算交换3个 Token A 。交易者输入 3 个 Token A ，并支付 0.3% 的手续费。最终，交易者将获得约 0.997 个 Token B 作为输出。交易会改变池中的储备平衡，从而导致新的价格。在交易前，池中有 1200 个 Token A 和 400 个 Token B 。
 
+根据恒定乘积公式 x·y = k 交易后的池中将有大约 1203.009 个 Token A 和大约 399.003 个 Token B 。Uniswap 使用 x·y = k 的恒定乘积公式来定义价格曲线。随着交易者的交换操作，池中的代币数量变化，价格曲线也随之调整，确定新的价格。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.35.webp)
 
+# 4源码分析
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.37.webp)
 
+## 4.1核心操作流程图解析
+在这一节，我们会介绍在 UniswapV2 当中最常用的三个操作，即添加流动性，撤除流动性，交换代币。我们会通过流程图来分析他们调用的合约以及调用的函数，来更加深刻的理解 UniswapV2 的源码。
 
+## 4.1.1添加流动性
+用户在添加流动性的时候，用户首先调用 UniswapV2Router.sol 合约，提供 Token A 和 Token B 的数量，UniswapV2Router.sol 合约的 addLiquidity 函数接收用户的请求并进行处理。
 
+addLiquidity 函数进一步调用 UniswapV2Pair.sol 合约，在 UniswapV2Pair.sol 合约中，调用 mint 函数执行实际的流动性添加操作，mint 函数根据用户提供的 Token A 和 Token B 的数量，计算应铸造的流动性代币（LP 代币）的数量，并将这些 LP 代币分配给用户，流动性添加操作完成后，mint 函数调用 _update 函数更新储备量。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.40.webp)
 
+## 4.1.2交换代币
+用户想要交换代币的时候，首先调用 UniswapV2Router.sol 合约，提供输入代币数量和最小输出代币数量。
 
+然后 UniswapV2Router 合约的 swapExactTokensForTokens 函数接收用户的请求并进行处理，swapExactTokensForTokens 函数进一步调用 UniswapV2Pair.sol 合约，在 UniswapV2Pair.sol 合约中，调用 swap 函数执行实际的代币交换， swap 函数根据输入代币数量和储备量，计算应输出的代币数量，并执行交换，交换完成后，swap 函数调用 _update 函数更新储备量和累计手续费。具体的流程如下所示：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.42.webp)
 
 
+## 4.1.2撤出流动性
+用户首先调用 UniswapV2Router.sol 合约，提供要撤出 LP 代币的数量，UniswapV2Router.sol 合约的 removeLiquidity 函数接收用户的请求并进行处理，removeLiquidity 函数进一步调用 UniswapV2Pair.sol 合约，在 UniswapV2Pair.sol 合约中，调用 burn 函数执行实际的流动性撤出操作，burn 函数根据提供的 LP 代币数量，计算应返还的 Token A 和 Token B 数量，并将这些代币返还给用户。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.44.png)
 
 
+## 4.2Core合约
 
+UniswapV2 Core 合约是去中心化交易平台 Uniswap 的核心部分，负责实现其自动化做市商（ AMM ）功能。与传统订单簿不同，Uniswap 通过流动性池和恒定乘积公式 x·y = k 来实现交易。流动性提供者将两种代币存入池中，获得流动性代币作为凭证。用户在进行交易时，合约根据池中代币数量和恒定乘积公式计算交易价格。UniswapV2 引入了多项改进，包括 ERC20 pairs 直接交易，价格预言机的改进， 闪电贷以及协议费的调整。core 合约当中的核心组件包括下面三个文件：
+- UniswapV2Pair.sol ：管理每个交易对的流动性池，处理代币交换、流动性添加和移除
+- UniswapV2Factory.sol ：负责创建和管理交易对
+- UniswapV2ERC20.sol ：流动性代币的标准实现，代表流动性提供者的份额
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.46.webp)
 
+## 4.2.1 UniswapV2Factory.sol
 
+UniswapV2Factory 合约的作用是负责创建和管理交易对（流动性池）。该合约允许用户创建新的交易对，并记录所有创建的交易对。此外，它还管理交易费接收地址和设置者地址。UniswapV2Factory.sol 有五个函数，分别来看一下
+- constructor 函数：构造函数，用于初始化 UniswapV2Factory 合约。输入是交易费设置者地址 _feeToSetter ， 输出是无。
+- allPairsLength 函数：返回所有创建的交易对的数量。 输入是无， 输出是所有交易对数量的 unit。
+- createPair 函数： 创建新的交易对。输入是 tokenA 和 tokenB 的两个代币地址，输出是创建的交易对地址 pair。
+- setFeeTo 函数： 设置交易费接受地址。 输入是新的交易费接受地址 _feeTo， 输出是无。
+- setFeeToSetter 函数： 设置新的交易费设置者地址。输入是新的交易费设置者地址 _feeToSetter， 输出是无。
 
+具体的代码解析如下：
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.48.webp)
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.49.webp)
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.50.webp)
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.51.webp)
 
+createPair 函数
 
+createPair 函数的作用是创建一个以 TokenA 和 TokenB 的交易对，在前端输入 TokenA 和 TokenB 之后，会先检查 TokenA 和 TokenB 是否是同一个币种，之后会对 TokenA 和 TokenB 做一个简单的排序，之后是检查 Token0 的地址，要求 Token0 的地址不能是 0；
 
+之后是通过 require(getPair[token0][token1] == address(0), 'UniswapV2: PAIR_EXISTS') ; 来检查这个代币对是否存在，只有存在了，才可以进行下去；后面通过 creationCode 来获取 UniswapV2Pair 合约的创建字节码；
 
+之后使用 token0 和 token1 的哈希值作为盐值，确保每个代币对的地址是唯一的，因为如果代币对的地址不唯一，那么交易者添加流动性可能会添加到错误的池子当中；之后使用内联汇编的 create2 指令创建合约，保证合约地址的唯一性和可预测性；
 
+之后便是初始化新创建的代币对合约，然后更新映射表，记录这个代币对合约的地址，然后将新创建的代币对合约地址添加到所有代币对的列表中，最后是触发 PairCreated 事件，通知外部有新的代币对创建
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.52.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.53.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.54.webp)
 
+## 4.2.2 UniswapV2ERC20.sol
+UniswapV2ERC20.sol 的主要功能是实现 ERC-20 代币，它实现了 ERC20 标准的代币功能，专门用于 UniswapV2 流动性池。合约包含铸造（ mint ）、销毁（ burn ）、批准（ approve ）和转移（ transfer ）等基本操作。此外，它还支持 permit 功能，允许使用签名来批准代币转移。我们来逐个看他包含的函数：
+- constructor 函数：初始化合约，设置 DOMAIN_SEPARATOR 用于 permit 功能。输入无，输出无。
+- _mint 函数：铸造新的代币，输入是接收地址“ to ”，和铸造数量“ value ”，输出无
+- _burn 函数： 销毁代币，输入是销毁地址 from 和销毁数量 value，输出无。
+- _approve 函数： 批准代币转移，所有者地址 owner，批准地址 spender 和批准数量 value，输出无。
+- _transfer 函数：转移代币， 输入是转出地址 from，接收地址 to 和转移数量 value， 输出无。
+- approve 函数：公开的批准函数，作用是调用 _approve 函数，输入是approve 函数公开的批准函数， 输出是返回布尔值 true 表示操作成功。
+- transfer 函数：作用是调用 _transfer 函数，输入是接受地址 to 和转移数量 value， 输出是返回布尔值 true 表示操作成功
+- transferFrom 函数：公开的授权转移函数。输入是转出地址 from，接收地址 to 和 转移数量 value，输出是 返回布尔值 true 表示操作成功
+- permit 函数： 使用签名来批准代币转移，验证签名并调用 _approve 函数，输入是所有者地址 owner，批准地址 spender，批准数量 value，截止时间 deadline，签名参数 v、r、s，输出无。
 
+官方的源码解析如下所示：
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.56.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.57.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.58.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.59.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.60.webp)
 
+## 4.2.3 UniswapV2Pair.sol
+UniswapV2Pair 即交易对合约，实现了 Uniswap v2 的核心功能，即管理和操作每个交易对的流动性池。该合约负责处理代币的交换、流动性的添加和移除，以及价格的累积计算。它确保在每次交易后，交易对的储备和价格信息得到更新，并触发相应的事件通知。UniswapV2Pair.sol 中有 11 个函数，具体入下面表格所示：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.62.webp)
 
+官方的 UniswapV2Pair.sol 的代码和注释如下：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.63.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.64.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.65.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.66.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.67.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.68.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.69.png)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.70.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.71.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.72.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.73.png)
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.74.webp)
 
+UniswapV2Pair 是继承 IUniswapV2Pair, UniswapV2ERC20，首先看看 IUniswapV2Pair 的源码，看看 IUniswapV2Pair 如何定义接口：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.75.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.76.png)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.77.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.78.webp)
 
+之后定义了全局变量和修饰器
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.79.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.80.webp)
 
+上面的 MINIMUM_LIQUIDITY 是一个常量，它设定了流动性池中必须保留的最小流动性代币数量，以确保流动性提供者在任何时候都至少保留一定量的代币，从而避免流动性枯竭，数值是 10 的3次方，在提供初始流动性时会被燃烧掉； SELECTOR 存储的是代币转账函数的 ABI（应用程序二进制接口）选择器，它用于在智能合约中准确地识别和调用其他合约的 transfer 函数，确保在执行代币转移时使用正确的函数签名；
 
+factory 用于存储交易对合约的Uniswap V2工厂合约的地址，Token0，Token1 用于存储代币地址，reserve0, reserve1 和 blockTimestampLast 这三个状态变量记录了最新的恒定乘积中两种资产的数量和交易时的区块(创建)时间；
 
+而 price0CumulativeLast 和 price1CumulativeLast 变量用于记录交易对中两种价格的累计值，kLast 用于跟踪 UniswapV2 交易对中两种代币储备量乘积的最近状态，作为一个关键参数来维持流动性池的价格稳定性和计算交易费用，主要用于团队手续费的计算。
 
+下面这一段修饰器是提供了一种锁机制来防止重入攻击，具体代码解析如下：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.81.webp)
 
+上面的代码当中的 _; 表示被修饰的函数体，这段代码的大致逻辑是：定义了一个 lock 修饰符，它通过改变 unlocked 变量的状态来确保在执行被修饰的函数期间合约不会被重新进入，从而防止重入攻击和竞态条件。
 
+下面的 getReserves 函数的作用是提供一种方式来公开查询并返回 UniswapV2 交易对合约当前的两种代币储备量和最后更新时间戳的信息。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.82.webp)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.83.webp)
 
+_safeTransfer 函数的作用是在智能合约内部执行代币的转移操作，并检查转移是否成功，如果失败则抛出异常，确保了合约的安全性和代币转移的可靠性，下面是这一段代码的详细注释：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.84.webp)
 
+下面的构造函数只是简单的用于初始化 factory：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.85.webp)
 
+initialize 函数的作用是设置交易对合约所涉及的两种代币的地址，且只能由部署交易对的工厂合约(factory) 来调用，确保交易对的初始化过程是安全和受控的。
+
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.86.webp)
+
+_update 函数的主要作用是确保交易对合约的储备量和价格累积器能够反映最新的状态， 具体实现的方法是通过比较当前区块的时间戳和上次更新的时间戳。_update 函数的四个输入参数分别是：balance0 和 balance1 ，表示交易对中两种代币当前的余额；_reserve0 和 _reserve1 ，表示函数调用前两种代币的储备量。我们接下来用bullet point的方式来讲解一下 _update 函数是如何实现的：
+
+1. 检查余额值是否可能导致溢出：通过 require语句确保传入的 balance0 和 balance1 不会超过 uint112 的最大值，这是因为 reserve0 和 reserve1 在存储时使用 uint112 类型，需要保证数据类型转换的安全性。
+2. 记录当前区块时间：获取当前区块的时间戳，并将其与 blockTimestampLast 进行模2^32运算，得到 blockTimestamp 。这个操作是因为以太坊的区块时间戳是32位的，而且我们只关心在一个区块内的时间差，而不是绝对时间。
+3. 计算时间差：计算当前区块时间与上次更新时间的差值 timeElapsed 。如果 timeElapsed 为0，表示这是同一区块内的连续调用，因此不会更新价格累积值。
+4. 价格累积更新：如果时间差大于0，并且储备量不为0，使用固定点数学库 UQ112x112 来计算价格比例，并更新 price0CumulativeLast 和 price1CumulativeLast 。这里的“never overflows”意味着由于时间间隔 timeElapsed 是 uint32 类型，与价格累积值（uint224）相乘不会导致溢出。“+ overflow is desired”指的是价格累积值允许溢出，因为价格计算使用的是变化量（delta）而不是绝对值，即使有溢出，计算平均价格时使用的变化量仍然是准确的。
+5. 更新储备量：将新的余额赋值给 reserve0 和 reserve1 ，更新流动性池的储备量。
+6. 更新时间戳：将当前区块时间戳赋值给 blockTimestampLast ，为下一次更新做准备。
+7. 触发同步事件：通过 emit 关键字发出 Sync 事件，告知外部监听者储备量已经更新。
+
+这种设计允许 UniswapV2 在处理大量交易时保持价格的连续性和准确性，即使在区块时间戳或价格累积值可能溢出的情况下，依然能够通过变化量来准确计算出平均交易价格。这是通过巧妙地利用固定点数学和时间差分来实现的。
+
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.87.webp)
+
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.88.webp)
+
+在 UniswapV2 中，用户每笔交易会被收取0.3%的手续费。这笔手续费中的六分之一将分配给开发团队，而剩下的六分之五将作为奖励给予流动性提供者。然而，如果每次交易都计算一次手续费，这将不可避免地增加用户的 Gas 费用。
+
+因此，在UniswapV2中，手续费会被累积起来，只有在流动性发生变化时才会对手续费进行分配。_mintFee函数首先检查是否开启了交易费用，并确定费用接收地址。如果交易费用未开启，且之前有铸造过费用(_kLast不为0)，则重置 kLast 值。这种费用铸造机制是 UniswapV2 的一部分，用于为流动性提供者提供额外的激励；如果交易费用开启，则根据下面的公式来计算手续费的值，
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.89.webp)
+
+Sₘ 表示应该铸造的手续费流动性代币数量，k₁表示上一个流动性事件后的储备的乘积k，k₂ 表示当前的储备乘积k，S₁表示上一个流动性事件后的总流动性代币供应量。
+
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.90.webp)
+
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/univ2-img/640.91.webp)
