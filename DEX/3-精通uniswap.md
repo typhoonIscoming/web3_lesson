@@ -99,117 +99,198 @@ $xy=x'y'=k$
 
 其中：$\alpha=\frac{\Delta x}{x}$，$\beta =\frac{\Delta y}{y}$
 
+$\Delta x=\alpha x$
 
+$x'=(1+\alpha )x=\frac{1}{1-\beta }x \implies 1+\alpha =\frac{1}{1-\beta } \implies \alpha =\frac{\beta }{1-\beta }$
 
+$\Delta x=\frac{\beta}{1-\beta }x$
 
+$\Delta y=\frac{\alpha }{1-\alpha }y$
 
+下面是`Input price`的函数图像：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.1.jpeg)
 
+从上图可以看出向流动池中注入的$\Delta X$越多，可以从流动池中取出的$\Delta Y$也会越多，但是$\Delta Y$只会不断地逼近流动池中现有的代币数量，并不会超过，也就是说你永远无法一次性买断流动池中所有的。可以看出，恒等乘积公式可以提供无限的流动性，只要你想买就一定可以买到。
 
+## 交易滑点
 
+交易滑点是指：“在买卖$Token$时，实际支付的价格和期望的交易价格之间的差别，称为交易滑点”。
 
+从流动池中购买$\Delta Y$ Token需要支付$\Delta X$，所以本次购买的价格为：$\frac{\Delta X }{\Delta Y }$
 
+$P=\frac{\Delta X }{\Delta Y }=\frac{\alpha x }{\frac{\alpha }{1+\alpha }y}=(1+\alpha)\frac{x}{y}$
 
+$P'=\frac{x}{y}$
 
+$滑点=P-P' = (1+\alpha )P' -P'=\alpha P'$
 
+其中：$P'=\frac{x}{y}$表示当前流动池中的价格
 
+从公式可以看出交易的滑点是与$\alpha =\frac{\Delta X}{x}$成线性关系。
 
+下图是滑点的函数图像：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.2.jpeg)
 
+滑点(偏离幅度)取决于$\frac{\Delta X}{x}$, 当资金池中足够大时，滑点越小，资金池固定时，一个区块时间内净交易量越小，滑点越小，一个区块时间内的净交易量又与两个因素相关，一个是区块确认速度，一个是市场价格波动率，因此Uniswap恒定乘积做市的滑点与下面三个因素高度相关：
 
 
+滑点(偏离幅度)取决于$\frac{\Delta X}{x}$, 当资金池中足够大时，滑点越小，资金池固定时，一个区块时间内净交易量越小，滑点越小，一个区块时间内的净交易量又与两个因素相关，一个是区块确认速度，一个是市场价格波动率，因此Uniswap恒定乘积做市的滑点与下面三个因素高度相关：
 
+- 资金池的大小
+- 区块确认速度
+- 市场波动率
 
+## 流动池币价
 
+当从流动池中购买$\Delta Y$代币后一定会引起当前流动池中的价格波动：
 
+$P=\frac{x' }{y' }=\frac{(1+\alpha) x }{\frac{1 }{1+\alpha }y}=(1+\alpha)(1+\alpha)\frac{x}{y}$
 
+其中：是购买代币后流动池中的币价
 
+从公式可以看出流动池中的币价与成二次函数关系
 
+下图是价格的函数图像：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.3.jpeg)
 
+当流动池中的价格与外部市场价格不一致时就会有套利者出现，套利者监控全球各家交易所的价格，一旦发现两家交易所存在价差，就会同时在两边低买高卖赚取中间差价。由于套利者的存在，才使得Uniswap币价不会与全球市场脱节。
 
+- Uniswap中的价格高于外部市场时，套利者从外部市场低价买入 ，然后高价卖给Uniswap
+- Uniswap中的价格低于外部市场时，套利者从Uniswap低价买入，然后高价卖给外部市场
 
+## 表格
 
+对于不理解上面公式的同学，可以参考以下表格中的数据自己在excel中手动演算一遍，可以更直观的理解Uniswap的工作原理。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.4.jpeg)
 
+加入手续费的恒定乘积公式
 
+以下过程是在计算手续费的情况下，将上面的公式重新推导了一遍。
 
+## 计算交易价格
 
+$x'_\rho =x+\Delta x=(1+\alpha )x=\frac{1+\beta (\frac{1}{\gamma }-1)}{1-\beta }x$
 
+$y'_\rho =y+\Delta y=\frac{1}{(1+\alpha \gamma )}y=(1-\beta )y$
 
+$k'>x'_\rho y'_\rho =(1+\beta (\frac{1}{\gamma }-1))xy>k\ (加入手续费后计算出的k'>k)$
 
+> `k`除了在有交易手续费的情况会变大，还有一个情况也会使`k`值产生变化，当向流动池中增加流动性的时候`k`会变大，当从流动池中取回流动资金时`k`会变小。具体变化比例可以参考`Uniswap`白皮书，这里就不做推导了。
 
+其中：$\alpha = \frac{\Delta x}{x}$，$\beta = \frac{\Delta y}{y}$，$0\leq \rho < 1$ ，$\gamma =1-\rho$ ，目前交易费为：$\rho = 0.3\%$
 
+$\Delta x=\frac{\beta}{1-\bata} \cdot \frac{1}{\gamma}\cdot x$
 
+$\Delta y=\frac{\alpha \gamma }{1+\alpha \gamma } \cdot y$
 
 
+## 交易滑点
 
+$P=\frac{\Delta X }{\Delta Y }=\frac{\alpha x }{\frac{\alpha \gamma }{1+\alpha \gamma }\cdot y}=\frac{(1+\alpha \gamma )}{\gamma }\frac{x}{y}$
 
+$P'=\frac{x}{y}$
 
+$滑点=P-P' = \frac{(1+\alpha \gamma )}{\gamma }\frac{x}{y} -\frac{x}{y}=\frac{1+(\alpha-1)\gamma }{\gamma }\frac{x}{y}$
 
+## 流动池的币价
 
+$\frac{x'_\rho }{y'_\rho }=\frac{(1+\alpha )x}{\frac{1}{1+\alpha \gamma }y}=(1+\alpha )(1+\alpha \gamma )\frac{x}{y}$
 
+## 流动池收益与风险
 
+在`Uniswap`中流动性提供者的收益主要来自于交易抽成，`Uniswap`会从每笔交易中抽取`0.3%`的手续费，并将手续费按流动性提供者所占流动池的比例分配给流动性提供者。
 
+## impermanent loss
 
+向`Uniswap`中提供流动性的人会发现一个现象：“目前在流动池中资金的价值比放入流动池之前的资金价值少了，也就是资金缩水了”，这种现象被称为“impermanent loss”，`impermanent loss`中文翻译成“无常损失”，简单来说`impermanent loss`是指你将加密货币放入`uniswap`中赚取的收益与你将加密货币放入钱包中的收益之间的差，公式为：$L=profit_{lp}-profit_{bodl}$
 
+> hodl指不看币价涨跌长期持有某种加密货币（hold on for dear life）
 
+`impermanent loss`通常是由于流动池中的价格发生波动引起的，下面看一个例子：
 
+$e × t=k$  
+$p=t/e$  
+$e=\sqrt \frac{k}{p}$  
+$t=\sqrt {k ×p}$
 
+其中：表示流动池中`ETH`数量，表示流动池中`DAI`数量，表示流动池中的价格
 
+开始用户向流动池中注入$e=100$，$t=10,000$，当前市场的价格：$p=\frac{t}{e}=100$
 
+$k=et=100*10,000=1,000,000$
 
+假设现在外部市场价格发生了变化，价格变成：$p'=120$，由于发生价格差，这时套利者开始工作，套利者通过搬砖将流动池中的价格维持与外部是市场一致。这时流动池中最新的数量为：
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/70.2.jpeg)
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/70.3.jpeg)
 
+计算HODL时的资金 :
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/70.4.jpeg)
 
+计算放入流动池后的资金:
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/70.5.jpeg)
 
+计算impermanent loss:
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/70.6.jpeg)
 
+可以看出价格从100变成120后我们的资金只有之前的99.59%，损失了4%左右。只要这时候我们不将资金从流动池中取出，一旦流动池中的币价回到100时，我们是没有损失的，这是为什么叫impermanent loss无常损失的原因。
 
+下图演示impermanant loss的比率与当前价格变化的关系，O列表示资金刚放入流动池的情况，O->H表示价格上涨时impermanent loss的变化，A<-O表示价格下跌时impermanent loss的变化。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.5.jpeg)
 
+下图是根据上面数据画出的函数图像，蓝色的曲线是不包含手续费的，黄色的图像包含手续费，红色的线条是我手动添加上去的为了方便说明。
 
+再看黄色的曲线，由于黄色曲线是计算手续费收益的，所以只要币价在一个范围内波动，流动性提供者可以稳赚手续费收益。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.6.jpeg)
 
+由此可以得出一个结论要介绍impermanent loss对流动性提供者的影响，可以为两个币价之间波动小的流动池提供流动性。
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.7.jpeg)
 
+- mean-reverting pairs：均值回归的交易对，比如稳定币交易对两者波动是最小的，可以最大程度减少impermanent loss
+- correlated pairs：有正相关性的交易对，例如ETH/ZRX，这两个币的波动方向基本上是一致的，同涨同跌，两者之间的相对波动小
+- Uncorrelated pairs：非相关性的交易对，如ETH/DAI，为这种交易对提供流动性，赚取的交易费有可能会覆盖impermanent loss
+- Inverse correlated pairs：负相关的交易对，是最危险的，他们之间波动方向相反，两者之间的相对波动范围最大。
 
+下面是计算impermanent loss的公式
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.8.jpeg)
 
+其中：priceRatio是价格变化比例
 
+以下是不计算手续费情况下推导过程：
 
+$et=e't'=k$ 
 
+$\frac{e}{t}=P$,$\frac{e'}{t'}=P'$,$\frac{e'}{t'}=\sqrt \frac{P'}{P}$,$\frac{t'}{t}=\sqrt \frac{P}{P'}$,$priceRatio=\sqrt \frac{P}{P'}$
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.9.jpeg)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.10.jpeg)
 
+![](https://github.com/MetaNodeAcademy/Base2_Solidity_Dex/blob/main/uni-img/50.11.jpeg)
 
 
+## 总结
 
+## 优点
 
+- 完全去中心化，不依赖第三方，任何人都可以基于uniswap构建自己的应用
+- 可以自由地创建任何ERC20交易对
+- 与其他去中心化交易所相比gas费用更低
+- 任何人都可以向uniswap流动池中提供流动性，人人都可以是做市商
 
+## 缺点
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- 需要依赖套利者去平衡uniswap与外部交易所之间的汇率
+- 对大户不友好，进行大额的交易会造成很大的滑点
 
 
 
