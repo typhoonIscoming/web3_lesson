@@ -24,25 +24,27 @@
 
 ### getAllPools
 
+由于池子的信息是在 Factory 合约中保存的，因此我们在返回全部池子信息的时候，还需要对 Factory 保存的信息进行处理，处理成我们想要的数据格式。
 
+这部分的逻辑比较清晰，通过遍历全部的池子信息，做一些数据转换就行。
 
+获取到的数据供前端展示所有的pool信息。
 
+### createAndInitializePoolIfNecessary
 
+在创建完成池子之后，我们需要维护 DEX 整体池子的信息，该信息包含两部份，DEX 支持的交易对种类以及交易对的具体信息。前者主要是为了提供我们的 DEX 支持哪些 Token 间进行交易，后者主要是提供完整的池子信息。
 
+在 Factory 合约中，每次创建完成一个池子，都会记录下它的信息，因此这个信息我们不需要再记录，我们需要记录的是交易对的种类，即在获得一个新的交易对时，动态地维护一个 pairs 数组。
 
+需要注意的是，虽然 createPool 的入参 tokenA 和 tokenB 没有顺序要求，但是在 createAndInitializePoolIfNecessary 中我们创建的时候要求 token0 < token1。因为在这个方法中需要传入初始化的价格，而在交易池中价格是按照 token0/token1 的方式计算的，做这个限制可以避免 LP 不小心初始化错误的价格。在后续的代码和测试中，我们也约定了 tokenA 和 tokenB 是未排序的，而 token0 和 token1 是排序的，这样也便于我们理解代码。
 
+### Pool
 
+`mint`
 
+我们传入要添加流动性 amount，以及 data，这个 data 是用来在回调函数中传递参数的，后面会再讲。recipient 可以指定讲流动性的权益赋予谁。这里需要注意的是 amount 是流动性，而不是要 mint 的代币，至于流动性如何计算，我们在 PositionManager 的章节中讲解，这一讲中先不具体展开。但是在我们这一讲的实现中，我们需要基于传入的 amount 计算出 amount0 和 amount1，并返回这两个值。amount0 和 amount1 分别是两个代币的数量，另外还需要在 mint 方法中调用我们定义的回调函数 mintCallback，以及修改 Pool 合约中的一些状态。
 
-
-
-
-
-
-
-
-
-
+amount0 和 amount1 计算完成后需要调用 mintCallback 回调方法，LP 需要在这个回调方法中将对应的代币转入到 Pool 合约中，所以调用 Pool 合约 mint 方法的也需要是一个合约，并且在合约中定义好 mintCallback 方法。
 
 
 
